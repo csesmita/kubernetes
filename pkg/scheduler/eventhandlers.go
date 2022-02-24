@@ -83,12 +83,12 @@ func (sched *Scheduler) updateNodeInCache(oldObj, newObj interface{}) {
 		klog.ErrorS(nil, "Cannot convert newObj to *v1.Node", "newObj", newObj)
 		return
 	}
-
 	nodeInfo := sched.SchedulerCache.UpdateNode(oldNode, newNode)
 	// Only requeue unschedulable pods if the node became more schedulable.
 	if event := nodeSchedulingPropertiesChange(newNode, oldNode); event != nil {
 		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(*event, preCheckForNode(nodeInfo))
 	}
+    klog.InfoS("SMITA Updating node in cache. Updated information is %+v", newNode)
 }
 
 func (sched *Scheduler) deleteNodeFromCache(obj interface{}) {
@@ -126,14 +126,6 @@ func (sched *Scheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}) {
 	// Bypass update event that carries identical objects; otherwise, a duplicated
 	// Pod may go through scheduling and cause unexpected behavior (see #96071).
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
-		return
-	}
-
-	isAssumed, err := sched.SchedulerCache.IsAssumedPod(newPod)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to check whether pod %s/%s is assumed: %v", newPod.Namespace, newPod.Name, err))
-	}
-	if isAssumed {
 		return
 	}
 

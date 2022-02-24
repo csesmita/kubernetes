@@ -18,7 +18,6 @@ package cache
 
 import (
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -68,13 +67,11 @@ type Cache interface {
 	// AssumePod assumes a pod scheduled and aggregates the pod's information into its node.
 	// The implementation also decides the policy to expire pod before being confirmed (receiving Add event).
 	// After expiration, its information would be subtracted.
-	AssumePod(pod *v1.Pod) error
 
 	// FinishBinding signals that cache for assumed pod can be expired
 	FinishBinding(pod *v1.Pod) error
 
 	// ForgetPod removes an assumed pod from cache.
-	ForgetPod(pod *v1.Pod) error
 
 	// AddPod either confirms a pod if it's assumed, or adds it back if it's expired.
 	// If added back, the pod's information would be added again.
@@ -91,7 +88,6 @@ type Cache interface {
 	GetPod(pod *v1.Pod) (*v1.Pod, error)
 
 	// IsAssumedPod returns true if the pod is assumed and not expired.
-	IsAssumedPod(pod *v1.Pod) (bool, error)
 
 	// AddNode adds overall information about node.
 	// It returns a clone of added NodeInfo object.
@@ -117,6 +113,5 @@ type Cache interface {
 
 // Dump is a dump of the cache state.
 type Dump struct {
-	AssumedPods sets.String
 	Nodes       map[string]*framework.NodeInfo
 }
