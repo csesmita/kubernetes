@@ -468,21 +468,18 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		return
 	}
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
-	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
+	// Tell the cache to add the pod now even though it hasn't been bound yet.
 	// This allows us to keep scheduling without waiting on binding to occur.
-	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
-	// TODO - when does binding fail? TODO - Add pod here instead of assuming.
-	/* err = sched.assume(assumedPod, scheduleResult.SuggestedHost)
+	// TODO - when does binding fail?
+	// TODO - what is nominatedPod in scheduling queue?
+	err = sched.SchedulerCache.AddPod(pod)
 	if err != nil {
+		klog.ErrorS(err, "Scheduler cache AddPod failed", "pod", klog.KObj(pod))
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
-		// This is most probably result of a BUG in retrying logic.
-		// We report an error here so that pod scheduling can be retried.
-		// This relies on the fact that Error will check if the pod has been bound
-		// to a node and if so will not add it back to the unscheduled pods queue
-		// (otherwise this would cause an infinite loop).
-		sched.recordSchedulingFailure(fwk, assumedPodInfo, err, SchedulerError, clearNominatedNode)
+		sched.recordSchedulingFailure(fwk, podInfo, err, SchedulerError, clearNominatedNode)
 		return
-	}*/
+	}
+	sched.SchedulingQueue.AssignedPodAdded(pod)
 
 	// Run the Reserve method of reserve plugins.
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, pod, scheduleResult.SuggestedHost); !sts.IsSuccess() {

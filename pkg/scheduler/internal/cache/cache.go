@@ -403,9 +403,6 @@ func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
 
 	_, ok := cache.podStates[key]
 	switch {
-	case ok:
-		cache.podStates[key].deadline = nil
-		cache.podStates[key].pod = pod
 	case !ok:
 		// Pod was expired. We should add it back.
 		cache.addPod(pod)
@@ -456,7 +453,7 @@ func (cache *schedulerCache) RemovePod(pod *v1.Pod) error {
 	switch {
 	case ok:
 		if currState.pod.Spec.NodeName != pod.Spec.NodeName {
-			klog.ErrorS(nil, "Pod was added to a different node than it was assumed", "pod", klog.KObj(pod), "assumedNode", klog.KRef("", pod.Spec.NodeName), "currentNode", klog.KRef("", currState.pod.Spec.NodeName))
+			klog.ErrorS(nil, "Pod was added to a different node than in cache", "pod", klog.KObj(pod), "actual Node", klog.KRef("", pod.Spec.NodeName), "cache Node", klog.KRef("", currState.pod.Spec.NodeName))
 			if pod.Spec.NodeName != "" {
 				// An empty NodeName is possible when the scheduler misses a Delete
 				// event and it gets the last known state from the informer cache.
