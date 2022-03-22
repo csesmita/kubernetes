@@ -641,8 +641,6 @@ func TestPriorityQueue_UpdateNominatedPodForNode(t *testing.T) {
 func TestPriorityQueue_NewWithOptions(t *testing.T) {
 	q := NewTestQueue(context.Background(),
 		newDefaultQueueSort(),
-		WithPodInitialBackoffDuration(2*time.Second),
-		WithPodMaxBackoffDuration(20*time.Second),
 	)
 
 	if q.podInitialBackoffDuration != 2*time.Second {
@@ -1766,7 +1764,7 @@ func TestPriorityQueue_calculateBackoffDuration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			q := NewTestQueue(context.Background(), newDefaultQueueSort(), WithPodInitialBackoffDuration(tt.initialBackoffDuration), WithPodMaxBackoffDuration(tt.maxBackoffDuration))
+			q := NewTestQueue(context.Background(), newDefaultQueueSort())
 			if got := q.calculateBackoffDuration(tt.podInfo); got != tt.want {
 				t.Errorf("PriorityQueue.calculateBackoffDuration() = %v, want %v", got, tt.want)
 			}

@@ -47,17 +47,6 @@ const (
 	queueClosed = "scheduling queue is closed"
 )
 
-const (
-	// DefaultPodInitialBackoffDuration is the default value for the initial backoff duration
-	// for unschedulable pods. To change the default podInitialBackoffDurationSeconds used by the
-	// scheduler, update the ComponentConfig value in defaults.go
-	DefaultPodInitialBackoffDuration time.Duration = 1 * time.Second
-	// DefaultPodMaxBackoffDuration is the default value for the max backoff duration
-	// for unschedulable pods. To change the default podMaxBackoffDurationSeconds used by the
-	// scheduler, update the ComponentConfig value in defaults.go
-	DefaultPodMaxBackoffDuration time.Duration = 10 * time.Second
-)
-
 // PreEnqueueCheck is a function type. It's used to build functions that
 // run against a Pod and the caller can choose to enqueue or skip the Pod
 // by the checking result.
@@ -156,8 +145,6 @@ type PriorityQueue struct {
 
 type priorityQueueOptions struct {
 	clock                     util.Clock
-	podInitialBackoffDuration time.Duration
-	podMaxBackoffDuration     time.Duration
 	podNominator              framework.PodNominator
 	clusterEventMap           map[framework.ClusterEvent]sets.String
 }
@@ -169,20 +156,6 @@ type Option func(*priorityQueueOptions)
 func WithClock(clock util.Clock) Option {
 	return func(o *priorityQueueOptions) {
 		o.clock = clock
-	}
-}
-
-// WithPodInitialBackoffDuration sets pod initial backoff duration for PriorityQueue.
-func WithPodInitialBackoffDuration(duration time.Duration) Option {
-	return func(o *priorityQueueOptions) {
-		o.podInitialBackoffDuration = duration
-	}
-}
-
-// WithPodMaxBackoffDuration sets pod max backoff duration for PriorityQueue.
-func WithPodMaxBackoffDuration(duration time.Duration) Option {
-	return func(o *priorityQueueOptions) {
-		o.podMaxBackoffDuration = duration
 	}
 }
 
@@ -202,8 +175,6 @@ func WithClusterEventMap(m map[framework.ClusterEvent]sets.String) Option {
 
 var defaultPriorityQueueOptions = priorityQueueOptions{
 	clock:                     util.RealClock{},
-	podInitialBackoffDuration: DefaultPodInitialBackoffDuration,
-	podMaxBackoffDuration:     DefaultPodMaxBackoffDuration,
 }
 
 // Making sure that PriorityQueue implements SchedulingQueue.
@@ -244,8 +215,6 @@ func NewPriorityQueue(
 		PodNominator:              options.podNominator,
 		clock:                     options.clock,
 		stop:                      make(chan struct{}),
-		podInitialBackoffDuration: options.podInitialBackoffDuration,
-		podMaxBackoffDuration:     options.podMaxBackoffDuration,
 		activeQ:                   heap.NewWithRecorder(podInfoKeyFunc, comp, metrics.NewActivePodsRecorder()),
 		moveRequestCycle:          -1,
 		clusterEventMap:           options.clusterEventMap,

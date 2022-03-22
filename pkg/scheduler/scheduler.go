@@ -95,8 +95,6 @@ type schedulerOptions struct {
 	componentConfigVersion   string
 	kubeConfig               *restclient.Config
 	percentageOfNodesToScore int32
-	podInitialBackoffSeconds int64
-	podMaxBackoffSeconds     int64
 	// Contains out-of-tree plugins to be merged with the in-tree registry.
 	frameworkOutOfTreeRegistry frameworkruntime.Registry
 	profiles                   []schedulerapi.KubeSchedulerProfile
@@ -157,20 +155,6 @@ func WithFrameworkOutOfTreeRegistry(registry frameworkruntime.Registry) Option {
 	}
 }
 
-// WithPodInitialBackoffSeconds sets podInitialBackoffSeconds for Scheduler, the default value is 1
-func WithPodInitialBackoffSeconds(podInitialBackoffSeconds int64) Option {
-	return func(o *schedulerOptions) {
-		o.podInitialBackoffSeconds = podInitialBackoffSeconds
-	}
-}
-
-// WithPodMaxBackoffSeconds sets podMaxBackoffSeconds for Scheduler, the default value is 10
-func WithPodMaxBackoffSeconds(podMaxBackoffSeconds int64) Option {
-	return func(o *schedulerOptions) {
-		o.podMaxBackoffSeconds = podMaxBackoffSeconds
-	}
-}
-
 // WithExtenders sets extenders for the Scheduler
 func WithExtenders(e ...schedulerapi.Extender) Option {
 	return func(o *schedulerOptions) {
@@ -191,8 +175,6 @@ func WithBuildFrameworkCapturer(fc FrameworkCapturer) Option {
 
 var defaultSchedulerOptions = schedulerOptions{
 	percentageOfNodesToScore: schedulerapi.DefaultPercentageOfNodesToScore,
-	podInitialBackoffSeconds: int64(internalqueue.DefaultPodInitialBackoffDuration.Seconds()),
-	podMaxBackoffSeconds:     int64(internalqueue.DefaultPodMaxBackoffDuration.Seconds()),
 	parallelism:              int32(parallelize.DefaultParallelism),
 	// Ideally we would statically set the default profile here, but we can't because
 	// creating the default profile may require testing feature gates, which may get
@@ -247,8 +229,6 @@ func New(client clientset.Interface,
 		schedulerCache:           schedulerCache,
 		StopEverything:           stopEverything,
 		percentageOfNodesToScore: options.percentageOfNodesToScore,
-		podInitialBackoffSeconds: options.podInitialBackoffSeconds,
-		podMaxBackoffSeconds:     options.podMaxBackoffSeconds,
 		profiles:                 append([]schedulerapi.KubeSchedulerProfile(nil), options.profiles...),
 		registry:                 registry,
 		nodeInfoSnapshot:         snapshot,

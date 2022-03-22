@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -165,8 +164,6 @@ func (c *Configurator) create() (*Scheduler, error) {
 	podQueue := internalqueue.NewSchedulingQueue(
 		lessFn,
 		c.informerFactory,
-		internalqueue.WithPodInitialBackoffDuration(time.Duration(c.podInitialBackoffSeconds)*time.Second),
-		internalqueue.WithPodMaxBackoffDuration(time.Duration(c.podMaxBackoffSeconds)*time.Second),
 		internalqueue.WithPodNominator(nominator),
 		internalqueue.WithClusterEventMap(c.clusterEventMap),
 	)
