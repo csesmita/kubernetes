@@ -538,11 +538,6 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			// as the assumed Pod had occupied a certain amount of resources in scheduler cache.
 			// TODO(#103853): de-duplicate the logic.
 			// Avoid moving the assumed Pod itself as it's always Unschedulable.
-			// It's intentional to "defer" this operation; otherwise MoveAllToActiveOrBackoffQueue() would
-			// update `q.moveRequest` and thus move the assumed pod to backoffQ anyways.
-			defer sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(internalqueue.AssignedPodDelete, func(pod *v1.Pod) bool {
-				return pod.UID != pod.UID
-			})
 			sched.recordSchedulingFailure(fwk, podInfo, waitOnPermitStatus.AsError(), reason, clearNominatedNode)
 			return
 		}
@@ -556,7 +551,6 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			// "Forget"ing an assumed Pod in binding cycle should be treated as a PodDelete event,
 			// as the assumed Pod had occupied a certain amount of resources in scheduler cache.
 			// TODO(#103853): de-duplicate the logic.
-			sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(internalqueue.AssignedPodDelete, nil)
 			sched.recordSchedulingFailure(fwk, podInfo, preBindStatus.AsError(), SchedulerError, clearNominatedNode)
 			return
 		}
@@ -569,7 +563,6 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			// "Forget"ing an assumed Pod in binding cycle should be treated as a PodDelete event,
 			// as the assumed Pod had occupied a certain amount of resources in scheduler cache.
 			// TODO(#103853): de-duplicate the logic.
-			sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(internalqueue.AssignedPodDelete, nil)
 			sched.recordSchedulingFailure(fwk, podInfo, fmt.Errorf("binding rejected: %w", err), SchedulerError, clearNominatedNode)
 		} else {
 			// Calculating nodeResourceString can be heavy. Avoid it if klog verbosity is below 2.

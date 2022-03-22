@@ -252,7 +252,6 @@ func TestPriorityQueue_AddUnschedulableIfNotPresent_Backoff(t *testing.T) {
 	}
 
 	// move all pods to active queue when we were trying to schedule them
-	q.MoveAllToActiveOrBackoffQueue(TestEvent, nil)
 	oldCycle := q.SchedulingCycle()
 
 	firstPod, _ := q.Pop()
@@ -412,173 +411,6 @@ func TestPriorityQueue_Delete(t *testing.T) {
 	}
 }
 
-func BenchmarkMoveAllToActiveOrBackoffQueue(b *testing.B) {
-	tests := []struct {
-		name      string
-		moveEvent framework.ClusterEvent
-	}{
-		{
-			name:      "baseline",
-			moveEvent: UnschedulableTimeout,
-		},
-		{
-			name:      "worst",
-			moveEvent: NodeAdd,
-		},
-		{
-			name: "random",
-			// leave "moveEvent" unspecified
-		},
-	}
-
-	podTemplates := []*v1.Pod{
-		highPriorityPodInfo.Pod, highPriNominatedPodInfo.Pod,
-		medPriorityPodInfo.Pod, unschedulablePodInfo.Pod,
-	}
-
-	events := []framework.ClusterEvent{
-		NodeAdd,
-		NodeTaintChange,
-		NodeAllocatableChange,
-		NodeConditionChange,
-		NodeLabelChange,
-		PvcAdd,
-		PvcUpdate,
-		PvAdd,
-		PvUpdate,
-		StorageClassAdd,
-		StorageClassUpdate,
-		CSINodeAdd,
-		CSINodeUpdate,
-		CSIDriverAdd,
-		CSIDriverUpdate,
-		CSIStorageCapacityAdd,
-		CSIStorageCapacityUpdate,
-	}
-
-	pluginNum := 20
-	var plugins []string
-	// Mimic that we have 20 plugins loaded in runtime.
-	for i := 0; i < pluginNum; i++ {
-		plugins = append(plugins, fmt.Sprintf("fake-plugin-%v", i))
-	}
-
-	for _, tt := range tests {
-		for _, podsInUnschedulableQ := range []int{1000, 5000} {
-			b.Run(fmt.Sprintf("%v-%v", tt.name, podsInUnschedulableQ), func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					c := testingclock.NewFakeClock(time.Now())
-
-					m := make(map[framework.ClusterEvent]sets.String)
-					// - All plugins registered for events[0], which is NodeAdd.
-					// - 1/2 of plugins registered for events[1]
-					// - 1/3 of plugins registered for events[2]
-					// - ...
-					for j := 0; j < len(events); j++ {
-						m[events[j]] = sets.NewString()
-						for k := 0; k < len(plugins); k++ {
-							if (k+1)%(j+1) == 0 {
-								m[events[j]].Insert(plugins[k])
-							}
-						}
-					}
-
-					q := NewTestQueue(context.Background(), newDefaultQueueSort(), WithClock(c), WithClusterEventMap(m))
-
-					// Init pods in unschedulableQ.
-					for j := 0; j < podsInUnschedulableQ; j++ {
-						p := podTemplates[j%len(podTemplates)].DeepCopy()
-						p.Name, p.UID = fmt.Sprintf("%v-%v", p.Name, j), types.UID(fmt.Sprintf("%v-%v", p.UID, j))
-						var podInfo *framework.QueuedPodInfo
-						// The ultimate goal of composing each PodInfo is to cover the path that intersects
-						// (unschedulable) plugin names with the plugins that register the moveEvent,
-						// here the rational is:
-						// - in baseline case, don't inject unschedulable plugin names, so podMatchesEvent()
-						//   never gets executed.
-						// - in worst case, make both ends (of the intersection) a big number,i.e.,
-						//   M intersected with N instead of M with 1 (or 1 with N)
-						// - in random case, each pod failed by a random plugin, and also the moveEvent
-						//   is randomized.
-						if tt.name == "baseline" {
-							podInfo = q.newQueuedPodInfo(p)
-						} else if tt.name == "worst" {
-							// Each pod failed by all plugins.
-							podInfo = q.newQueuedPodInfo(p, plugins...)
-						} else {
-							// Random case.
-							podInfo = q.newQueuedPodInfo(p, plugins[j%len(plugins)])
-						}
-						q.AddUnschedulableIfNotPresent(podInfo, q.SchedulingCycle())
-					}
-
-					b.StartTimer()
-					if tt.moveEvent.Resource != "" {
-						q.MoveAllToActiveOrBackoffQueue(tt.moveEvent, nil)
-					} else {
-						// Random case.
-						q.MoveAllToActiveOrBackoffQueue(events[i%len(events)], nil)
-					}
-				}
-			})
-		}
-	}
-}
-
-func TestPriorityQueue_MoveAllToActiveOrBackoffQueue(t *testing.T) {
-	c := testingclock.NewFakeClock(time.Now())
-	m := map[framework.ClusterEvent]sets.String{
-		{Resource: framework.Node, ActionType: framework.Add}: sets.NewString("fooPlugin"),
-	}
-	q := NewTestQueue(context.Background(), newDefaultQueueSort(), WithClock(c), WithClusterEventMap(m))
-	q.Add(medPriorityPodInfo.Pod)
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(unschedulablePodInfo.Pod, "fooPlugin"), q.SchedulingCycle())
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(highPriorityPodInfo.Pod, "fooPlugin"), q.SchedulingCycle())
-	// Construct a Pod, but don't associate its scheduler failure to any plugin
-	hpp1 := highPriorityPodInfo.Pod.DeepCopy()
-	hpp1.Name = "hpp1"
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(hpp1), q.SchedulingCycle())
-	// Construct another Pod, and associate its scheduler failure to plugin "barPlugin".
-	hpp2 := highPriorityPodInfo.Pod.DeepCopy()
-	hpp2.Name = "hpp2"
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(hpp2, "barPlugin"), q.SchedulingCycle())
-	// Pods is still backing off, move the pod into backoffQ.
-	q.MoveAllToActiveOrBackoffQueue(NodeAdd, nil)
-	if q.activeQ.Len() != 1 {
-		t.Errorf("Expected 1 item to be in activeQ, but got: %v", q.activeQ.Len())
-	}
-	// hpp2 won't be moved.
-	if q.podBackoffQ.Len() != 3 {
-		t.Fatalf("Expected 3 items to be in podBackoffQ, but got: %v", q.podBackoffQ.Len())
-	}
-
-	// pop out the pods in the backoffQ.
-	for q.podBackoffQ.Len() != 0 {
-		q.podBackoffQ.Pop()
-	}
-
-	q.schedulingCycle++
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(unschedulablePodInfo.Pod, "fooPlugin"), q.SchedulingCycle())
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(highPriorityPodInfo.Pod, "fooPlugin"), q.SchedulingCycle())
-	q.AddUnschedulableIfNotPresent(q.newQueuedPodInfo(hpp1), q.SchedulingCycle())
-	for _, pod := range []*v1.Pod{unschedulablePodInfo.Pod, highPriorityPodInfo.Pod, hpp1, hpp2} {
-		if q.unschedulableQ.get(pod) == nil {
-			t.Errorf("Expected %v in the unschedulableQ", pod.Name)
-		}
-	}
-	// Move clock by podInitialBackoffDuration, so that pods in the unschedulableQ would pass the backing off,
-	// and the pods will be moved into activeQ.
-	c.Step(q.podInitialBackoffDuration)
-	q.MoveAllToActiveOrBackoffQueue(NodeAdd, nil)
-	// hpp2 won't be moved regardless of its backoff timer.
-	if q.activeQ.Len() != 4 {
-		t.Errorf("Expected 4 items to be in activeQ, but got: %v", q.activeQ.Len())
-	}
-	if q.podBackoffQ.Len() != 0 {
-		t.Errorf("Expected 0 item to be in podBackoffQ, but got: %v", q.podBackoffQ.Len())
-	}
-}
-
 // TestPriorityQueue_AssignedPodAdded tests AssignedPodAdded. It checks that
 // when a pod with pod affinity is in unschedulableQ and another pod with a
 // matching label is added, the unschedulable pod is moved to activeQ.
@@ -731,11 +563,6 @@ func TestPriorityQueue_PendingPods(t *testing.T) {
 	expectedSet := makeSet([]*v1.Pod{medPriorityPodInfo.Pod, unschedulablePodInfo.Pod, highPriorityPodInfo.Pod})
 	if !reflect.DeepEqual(expectedSet, makeSet(q.PendingPods())) {
 		t.Error("Unexpected list of pending Pods.")
-	}
-	// Move all to active queue. We should still see the same set of pods.
-	q.MoveAllToActiveOrBackoffQueue(TestEvent, nil)
-	if !reflect.DeepEqual(expectedSet, makeSet(q.PendingPods())) {
-		t.Error("Unexpected list of pending Pods...")
 	}
 }
 
@@ -1038,8 +865,6 @@ func TestRecentlyTriedPodsGoBack(t *testing.T) {
 	// Put in the unschedulable queue.
 	q.AddUnschedulableIfNotPresent(p1, q.SchedulingCycle())
 	c.Step(DefaultPodInitialBackoffDuration)
-	// Move all unschedulable pods to the active queue.
-	q.MoveAllToActiveOrBackoffQueue(UnschedulableTimeout, nil)
 	// Simulation is over. Now let's pop all pods. The pod popped first should be
 	// the last one we pop here.
 	for i := 0; i < 5; i++ {
@@ -1090,8 +915,6 @@ func TestPodFailedSchedulingMultipleTimesDoesNotBlockNewerPod(t *testing.T) {
 	q.AddUnschedulableIfNotPresent(newQueuedPodInfoForLookup(&unschedulablePod), q.SchedulingCycle())
 	// Move clock to make the unschedulable pods complete backoff.
 	c.Step(DefaultPodInitialBackoffDuration + time.Second)
-	// Move all unschedulable pods to the active queue.
-	q.MoveAllToActiveOrBackoffQueue(UnschedulableTimeout, nil)
 
 	// Simulate a pod being popped by the scheduler,
 	// At this time, unschedulable pod should be popped.
@@ -1133,8 +956,6 @@ func TestPodFailedSchedulingMultipleTimesDoesNotBlockNewerPod(t *testing.T) {
 	q.AddUnschedulableIfNotPresent(newQueuedPodInfoForLookup(&unschedulablePod), q.SchedulingCycle())
 	// Move clock to make the unschedulable pods complete backoff.
 	c.Step(DefaultPodInitialBackoffDuration + time.Second)
-	// Move all unschedulable pods to the active queue.
-	q.MoveAllToActiveOrBackoffQueue(UnschedulableTimeout, nil)
 
 	// At this time, newerPod should be popped
 	// because it is the oldest tried pod.
@@ -1198,8 +1019,6 @@ func TestHighPriorityBackoff(t *testing.T) {
 	})
 	// Put in the unschedulable queue.
 	q.AddUnschedulableIfNotPresent(p, q.SchedulingCycle())
-	// Move all unschedulable pods to the active queue.
-	q.MoveAllToActiveOrBackoffQueue(TestEvent, nil)
 
 	p, err = q.Pop()
 	if err != nil {
@@ -1305,9 +1124,6 @@ var (
 	addPodBackoffQ = func(queue *PriorityQueue, pInfo *framework.QueuedPodInfo) {
 		queue.podBackoffQ.Add(pInfo)
 	}
-	moveAllToActiveOrBackoffQ = func(queue *PriorityQueue, _ *framework.QueuedPodInfo) {
-		queue.MoveAllToActiveOrBackoffQueue(UnschedulableTimeout, nil)
-	}
 	flushBackoffQ = func(queue *PriorityQueue, _ *framework.QueuedPodInfo) {
 		queue.clock.(*testingclock.FakeClock).Step(2 * time.Second)
 		queue.flushBackoffQCompleted()
@@ -1381,7 +1197,6 @@ func TestPodTimestamp(t *testing.T) {
 				addPodUnschedulableQ,
 				addPodUnschedulableQ,
 				moveClockForward,
-				moveAllToActiveOrBackoffQ,
 			},
 			operands: []*framework.QueuedPodInfo{pInfo2, pInfo1, nil, nil},
 			expected: []*framework.QueuedPodInfo{pInfo1, pInfo2},
@@ -1392,7 +1207,6 @@ func TestPodTimestamp(t *testing.T) {
 				addPodActiveQ,
 				addPodBackoffQ,
 				flushBackoffQ,
-				moveAllToActiveOrBackoffQ,
 			},
 			operands: []*framework.QueuedPodInfo{pInfo2, pInfo1, nil, nil},
 			expected: []*framework.QueuedPodInfo{pInfo1, pInfo2},
@@ -1485,7 +1299,6 @@ scheduler_pending_pods{queue="unschedulable"} 10
 			operations: []operation{
 				addPodUnschedulableQ,
 				moveClockForward,
-				moveAllToActiveOrBackoffQ,
 			},
 			operands: [][]*framework.QueuedPodInfo{
 				pInfos[:total],
@@ -1507,7 +1320,6 @@ scheduler_pending_pods{queue="unschedulable"} 0
 				addPodUnschedulableQ,
 				moveClockForward,
 				addPodUnschedulableQ,
-				moveAllToActiveOrBackoffQ,
 			},
 			operands: [][]*framework.QueuedPodInfo{
 				pInfos[20:total],
@@ -1529,7 +1341,6 @@ scheduler_pending_pods{queue="unschedulable"} 0
 			operations: []operation{
 				addPodUnschedulableQ,
 				addPodActiveQ,
-				moveAllToActiveOrBackoffQ,
 				flushBackoffQ,
 			},
 			operands: [][]*framework.QueuedPodInfo{
@@ -1683,7 +1494,6 @@ func TestIncomingPodsMetrics(t *testing.T) {
 			name: "add pods to unschedulableQ and then move all to backoffQ",
 			operations: []operation{
 				addUnschedulablePodBackToUnschedulableQ,
-				moveAllToActiveOrBackoffQ,
 			},
 			want: ` scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="unschedulable"} 3
             scheduler_queue_incoming_pods_total{event="UnschedulableTimeout",queue="backoff"} 3
@@ -1694,7 +1504,6 @@ func TestIncomingPodsMetrics(t *testing.T) {
 			operations: []operation{
 				addUnschedulablePodBackToUnschedulableQ,
 				moveClockForward,
-				moveAllToActiveOrBackoffQ,
 			},
 			want: ` scheduler_queue_incoming_pods_total{event="ScheduleAttemptFailure",queue="unschedulable"} 3
             scheduler_queue_incoming_pods_total{event="UnschedulableTimeout",queue="active"} 3
@@ -1784,9 +1593,6 @@ func TestBackOffFlow(t *testing.T) {
 			if err := q.AddUnschedulableIfNotPresent(podInfo, int64(i)); err != nil {
 				t.Fatal(err)
 			}
-
-			// An event happens.
-			q.MoveAllToActiveOrBackoffQueue(UnschedulableTimeout, nil)
 
 			if _, ok, _ := q.podBackoffQ.Get(podInfo); !ok {
 				t.Errorf("pod %v is not in the backoff queue", podID)
@@ -1905,76 +1711,6 @@ func TestPodMatchesEvent(t *testing.T) {
 			q.clusterEventMap = tt.clusterEventMap
 			if got := q.podMatchesEvent(tt.podInfo, tt.event); got != tt.want {
 				t.Errorf("Want %v, but got %v", tt.want, got)
-			}
-		})
-	}
-}
-
-func TestMoveAllToActiveOrBackoffQueue_PreEnqueueChecks(t *testing.T) {
-	var podInfos []*framework.QueuedPodInfo
-	for i := 0; i < 5; i++ {
-		pInfo := newQueuedPodInfoForLookup(&v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("p%d", i)},
-			Spec:       v1.PodSpec{Priority: pointer.Int32Ptr(int32(i))},
-		})
-		podInfos = append(podInfos, pInfo)
-	}
-
-	tests := []struct {
-		name            string
-		preEnqueueCheck PreEnqueueCheck
-		podInfos        []*framework.QueuedPodInfo
-		want            []string
-	}{
-		{
-			name:     "nil PreEnqueueCheck",
-			podInfos: podInfos,
-			want:     []string{"p0", "p1", "p2", "p3", "p4"},
-		},
-		{
-			name:            "move Pods with priority greater than 2",
-			podInfos:        podInfos,
-			preEnqueueCheck: func(pod *v1.Pod) bool { return *pod.Spec.Priority >= 2 },
-			want:            []string{"p2", "p3", "p4"},
-		},
-		{
-			name:     "move Pods with even priority and greater than 2",
-			podInfos: podInfos,
-			preEnqueueCheck: func(pod *v1.Pod) bool {
-				return *pod.Spec.Priority%2 == 0 && *pod.Spec.Priority >= 2
-			},
-			want: []string{"p2", "p4"},
-		},
-		{
-			name:     "move Pods with even and negative priority",
-			podInfos: podInfos,
-			preEnqueueCheck: func(pod *v1.Pod) bool {
-				return *pod.Spec.Priority%2 == 0 && *pod.Spec.Priority < 0
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			q := NewTestQueue(context.Background(), newDefaultQueueSort())
-			for _, podInfo := range tt.podInfos {
-				q.AddUnschedulableIfNotPresent(podInfo, q.schedulingCycle)
-			}
-			q.MoveAllToActiveOrBackoffQueue(TestEvent, tt.preEnqueueCheck)
-			var got []string
-			for q.podBackoffQ.Len() != 0 {
-				obj, err := q.podBackoffQ.Pop()
-				if err != nil {
-					t.Fatalf("Fail to pop pod from backoffQ: %v", err)
-				}
-				queuedPodInfo, ok := obj.(*framework.QueuedPodInfo)
-				if !ok {
-					t.Fatalf("Fail to covert popped obj (type %T) to *framework.QueuedPodInfo", obj)
-				}
-				got = append(got, queuedPodInfo.Pod.Name)
-			}
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("Unexpected diff (-want, +got):\n%s", diff)
 			}
 		})
 	}

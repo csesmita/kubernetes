@@ -43,20 +43,10 @@ import (
 )
 
 func (sched *Scheduler) onStorageClassAdd(obj interface{}) {
-	sc, ok := obj.(*storagev1.StorageClass)
+	_, ok := obj.(*storagev1.StorageClass)
 	if !ok {
 		klog.ErrorS(nil, "Cannot convert to *storagev1.StorageClass", "obj", obj)
 		return
-	}
-
-	// CheckVolumeBindingPred fails if pod has unbound immediate PVCs. If these
-	// PVCs have specified StorageClass name, creating StorageClass objects
-	// with late binding will cause predicates to pass, so we need to move pods
-	// to active queue.
-	// We don't need to invalidate cached results because results will not be
-	// cached for pod that has unbound immediate PVCs.
-	if sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingWaitForFirstConsumer {
-		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.StorageClassAdd, nil)
 	}
 }
 
@@ -67,9 +57,8 @@ func (sched *Scheduler) addNodeToCache(obj interface{}) {
 		return
 	}
 
-	nodeInfo := sched.SchedulerCache.AddNode(node)
+	sched.SchedulerCache.AddNode(node)
 	klog.V(3).InfoS("Add event for node", "node", klog.KObj(node))
-	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.NodeAdd, preCheckForNode(nodeInfo))
 }
 
 func (sched *Scheduler) updateNodeInCache(oldObj, newObj interface{}) {
@@ -83,11 +72,8 @@ func (sched *Scheduler) updateNodeInCache(oldObj, newObj interface{}) {
 		klog.ErrorS(nil, "Cannot convert newObj to *v1.Node", "newObj", newObj)
 		return
 	}
-	nodeInfo := sched.SchedulerCache.UpdateNode(oldNode, newNode)
+	sched.SchedulerCache.UpdateNode(oldNode, newNode)
 	// Only requeue unschedulable pods if the node became more schedulable.
-	if event := nodeSchedulingPropertiesChange(newNode, oldNode); event != nil {
-		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(*event, preCheckForNode(nodeInfo))
-	}
     klog.InfoS("SMITA Updating node in cache. Updated information is %+v", newNode)
 }
 
@@ -154,18 +140,12 @@ func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
 	if err := sched.SchedulingQueue.Delete(pod); err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to dequeue %T: %v", obj, err))
 	}
-	fwk, err := sched.frameworkForPod(pod)
+	_, err := sched.frameworkForPod(pod)
 	if err != nil {
 		// This shouldn't happen, because we only accept for scheduling the pods
 		// which specify a scheduler name that matches one of the profiles.
 		klog.ErrorS(err, "Unable to get profile", "pod", klog.KObj(pod))
 		return
-	}
-	// If a waiting pod is rejected, it indicates it's previously assumed and we're
-	// removing it from the scheduler cache. In this case, signal a AssignedPodDelete
-	// event to immediately retry some unscheduled Pods.
-	if fwk.RejectWaitingPod(pod.UID) {
-		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.AssignedPodDelete, nil)
 	}
 }
 
@@ -233,7 +213,6 @@ func (sched *Scheduler) deletePodFromCache(obj interface{}) {
 		klog.ErrorS(err, "Scheduler cache RemovePod failed", "pod", klog.KObj(pod))
 	}
 
-	sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.AssignedPodDelete, nil)
 }
 
 // assignedPod selects pods that are assigned (scheduled and running).
@@ -321,20 +300,20 @@ func addAllEventHandlers(
 		funcs := cache.ResourceEventHandlerFuncs{}
 		if at&framework.Add != 0 {
 			evt := framework.ClusterEvent{Resource: gvk, ActionType: framework.Add, Label: fmt.Sprintf("%vAdd", shortGVK)}
+			klog.InfoS("SMITA Got event", evt)
 			funcs.AddFunc = func(_ interface{}) {
-				sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(evt, nil)
 			}
 		}
 		if at&framework.Update != 0 {
 			evt := framework.ClusterEvent{Resource: gvk, ActionType: framework.Update, Label: fmt.Sprintf("%vUpdate", shortGVK)}
+			klog.InfoS("SMITA Got event", evt)
 			funcs.UpdateFunc = func(_, _ interface{}) {
-				sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(evt, nil)
 			}
 		}
 		if at&framework.Delete != 0 {
 			evt := framework.ClusterEvent{Resource: gvk, ActionType: framework.Delete, Label: fmt.Sprintf("%vDelete", shortGVK)}
+			klog.InfoS("SMITA Got event", evt)
 			funcs.DeleteFunc = func(_ interface{}) {
-				sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(evt, nil)
 			}
 		}
 		return funcs
@@ -390,7 +369,6 @@ func addAllEventHandlers(
 				informerFactory.Storage().V1().StorageClasses().Informer().AddEventHandler(
 					cache.ResourceEventHandlerFuncs{
 						UpdateFunc: func(_, _ interface{}) {
-							sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(queue.StorageClassUpdate, nil)
 						},
 					},
 				)
