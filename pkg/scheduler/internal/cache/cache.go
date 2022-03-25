@@ -510,10 +510,13 @@ func (cache *schedulerCache) UpdatePod(oldPod, newPod *v1.Pod) error {
 
 	currState, ok := cache.podStates[key]
 	switch {
-	// An assumed pod won't have Update/Remove event. It needs to have Add event
-	// before Update event, in which case the state would change from Assumed to Added.
+	// An AddPod is invoked before bind is called.
+	// Also, there is no concept of AssumePod now. So, key will never be found in assumePods.
+	// At best, check if the name was not empty earlier.
 	case ok && !cache.assumedPods.Has(key):
-		if currState.pod.Spec.NodeName != newPod.Spec.NodeName {
+		if currState.pod.Spec.NodeName != newPod.Spec.NodeName && len(currState.pod.Spec.NodeName) > 0 {
+			klog.InfoS("Current nodename", currState.pod.Spec.NodeName,"New Nodename", newPod.Spec.NodeName)
+			klog.InfoS("Length of current nodename is", len(currState.pod.Spec.NodeName))
 			klog.ErrorS(nil, "Pod updated on a different node than previously added to", "pod", klog.KObj(oldPod))
 			klog.ErrorS(nil, "SchedulerCache is corrupted and can badly affect scheduling decisions")
 			os.Exit(1)
