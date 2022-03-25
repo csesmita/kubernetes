@@ -496,8 +496,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	assumedPodInfo := podInfo.DeepCopy()
 	assumedPod := assumedPodInfo.Pod
 	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
-	err = sched.assume(assumedPod, scheduleResult.SuggestedHost)
+	err = sched.SchedulerCache.AddPod(pod)
 	if err != nil {
+		klog.ErrorS(err, "Scheduler cache AddPod failed","pod", klog.KObj(pod))
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 		// This is most probably result of a BUG in retrying logic.
 		// We report an error here so that pod scheduling can be retried.
@@ -507,6 +508,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, assumedPodInfo, err, SchedulerError, clearNominatedNode)
 		return
 	}
+	sched.SchedulingQueue.AssignedPodAdded(pod)
+	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod))
 
 	// Run the Reserve method of reserve plugins.
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost); !sts.IsSuccess() {
