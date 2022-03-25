@@ -348,22 +348,20 @@ func updatePod(client clientset.Interface, pod *v1.Pod, condition *v1.PodConditi
 	return util.PatchPodStatus(client, pod, podStatusCopy)
 }
 
-// assume signals to the cache that a pod is already in the cache, so that binding can be asynchronous.
-// assume modifies `assumed`.
-func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
+func (sched *Scheduler) add(pod *v1.Pod, host string) error {
 	// Optimistically assume that the binding will succeed and send it to apiserver
 	// in the background.
 	// If the binding fails, scheduler will release resources allocated to assumed pod
 	// immediately.
-	assumed.Spec.NodeName = host
+	pod.Spec.NodeName = host
 
-	if err := sched.SchedulerCache.AssumePod(assumed); err != nil {
-		klog.ErrorS(err, "Scheduler cache AssumePod failed")
+	if err := sched.SchedulerCache.AddPod(pod); err != nil {
+		klog.ErrorS(err, "Scheduler cache AddPod failed")
 		return err
 	}
 	// if "assumed" is a nominated pod, we should remove it from internal cache
 	if sched.SchedulingQueue != nil {
-		sched.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
+		sched.SchedulingQueue.DeleteNominatedPodIfExists(pod)
 	}
 
 	return nil
@@ -496,8 +494,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	assumedPodInfo := podInfo.DeepCopy()
 	assumedPod := assumedPodInfo.Pod
 	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
-	err = sched.assume(assumedPod, scheduleResult.SuggestedHost)
+	err = sched.add(pod, scheduleResult.SuggestedHost)
 	if err != nil {
+		klog.ErrorS(err, "Scheduler cache AddPod failed","pod", klog.KObj(pod))
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 		// This is most probably result of a BUG in retrying logic.
 		// We report an error here so that pod scheduling can be retried.
@@ -507,6 +506,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, assumedPodInfo, err, SchedulerError, clearNominatedNode)
 		return
 	}
+	sched.SchedulingQueue.AssignedPodAdded(pod)
+	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod))
 
 	// Run the Reserve method of reserve plugins.
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost); !sts.IsSuccess() {
