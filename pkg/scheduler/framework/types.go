@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -393,6 +394,9 @@ type NodeInfo struct {
 	// Keys are in the format "namespace/name".
 	PVCRefCounts map[string]int
 
+	// An estimated wait time on this node used for scheduling purposes.
+	EstimatedWaitTime float64
+
 	// Whenever NodeInfo changes, generation is bumped.
 	// This is used to avoid cloning it if the object didn't change.
 	Generation int64
@@ -516,6 +520,7 @@ func NewNodeInfo(pods ...*v1.Pod) *NodeInfo {
 		NonZeroRequested: &Resource{},
 		Allocatable:      &Resource{},
 		Generation:       nextGeneration(),
+		EstimatedWaitTime: 0,
 		UsedPorts:        make(HostPortInfo),
 		ImageStates:      make(map[string]*ImageStateSummary),
 		PVCRefCounts:     make(map[string]int),
@@ -545,6 +550,7 @@ func (n *NodeInfo) Clone() *NodeInfo {
 		ImageStates:      n.ImageStates,
 		PVCRefCounts:     n.PVCRefCounts,
 		Generation:       n.Generation,
+		EstimatedWaitTime: n.EstimatedWaitTime,
 	}
 	if len(n.Pods) > 0 {
 		clone.Pods = append([]*PodInfo(nil), n.Pods...)
@@ -574,8 +580,8 @@ func (n *NodeInfo) String() string {
 	for i, p := range n.Pods {
 		podKeys[i] = p.Pod.Name
 	}
-	return fmt.Sprintf("&NodeInfo{Pods:%v, RequestedResource:%#v, NonZeroRequest: %#v, UsedPort: %#v, AllocatableResource:%#v}",
-		podKeys, n.Requested, n.NonZeroRequested, n.UsedPorts, n.Allocatable)
+	return fmt.Sprintf("&NodeInfo{Pods:%v, RequestedResource:%#v, NonZeroRequest: %#v, UsedPort: %#v, AllocatableResource:%#v EstimatedWaitTime: %v}",
+		podKeys, n.Requested, n.NonZeroRequested, n.UsedPorts, n.Allocatable, n.EstimatedWaitTime)
 }
 
 // AddPodInfo adds pod information to this NodeInfo.
@@ -604,6 +610,10 @@ func (n *NodeInfo) AddPodInfo(podInfo *PodInfo) {
 	// Consume ports when pods added.
 	n.updateUsedPorts(podInfo.Pod, true)
 	n.updatePVCRefCounts(podInfo.Pod, true)
+
+	// Update EstimatedWaitTime of the node.
+	n.updateWaitTime(podInfo.Pod, true)
+	klog.InfoS("SMITA Got estimated wait time for the node - ",n.EstimatedWaitTime, "for node", n.Node())
 
 	n.Generation = nextGeneration()
 }
@@ -682,6 +692,7 @@ func (n *NodeInfo) RemovePod(pod *v1.Pod) error {
 			// Release ports when remove Pods.
 			n.updateUsedPorts(pod, false)
 			n.updatePVCRefCounts(pod, false)
+			n.updateWaitTime(pod, false)
 
 			n.Generation = nextGeneration()
 			n.resetSlicesIfEmpty()
@@ -742,6 +753,29 @@ func calculateResource(pod *v1.Pod) (res Resource, non0CPU int64, non0Mem int64)
 	}
 
 	return
+}
+
+// updateWaitTime updates the EstimatedWaitTime of NodeInfo.
+func (n *NodeInfo) updateWaitTime(pod *v1.Pod, add bool) {
+	found := false
+	for _, container := range pod.Spec.Containers {
+		for _, env := range container.Env{
+			if env.Name == "ESTRUNTIME"{
+				// copy in the est time
+				estTime, _ := strconv.ParseFloat(env.Value, 32)
+				if add {
+					n.EstimatedWaitTime += estTime
+				} else {
+					n.EstimatedWaitTime -= estTime
+				}
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
 }
 
 // updateUsedPorts updates the UsedPorts of NodeInfo.

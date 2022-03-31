@@ -49,7 +49,7 @@ const (
 	// would be scored in each scheduling cycle. This is a semi-arbitrary value
 	// to ensure that a certain minimum of nodes are checked for feasibility.
 	// This in turn helps ensure a minimum level of spreading.
-	minFeasibleNodesPercentageToFind = 5
+	minFeasibleNodesPercentageToFind = 100
 )
 
 // ErrNoNodesAvailable is used to describe the error that no nodes available to schedule pods.

@@ -178,8 +178,14 @@ func (cache *schedulerCache) Dump() *Dump {
 	defer cache.mu.RUnlock()
 
 	nodes := make(map[string]*framework.NodeInfo, len(cache.nodes))
+	klog.InfoS("SMITA Dumping cache nodes")
 	for k, v := range cache.nodes {
 		nodes[k] = v.info.Clone()
+		klog.InfoS("Node", k," -", v)
+	}
+	klog.InfoS("SMITA Dumping cache headnode")
+	for node := cache.headNode; node != nil; node = node.next {
+		klog.InfoS("Node Info", node.info," and Node info Node() is nil?", node.info.Node() == nil)
 	}
 
 	return &Dump{
