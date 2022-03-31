@@ -452,6 +452,8 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 
 	schedulingCycleCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	klog.InfoS("---- Dumping Cache before schedule ---- ")
+	sched.SchedulerCache.Dump()
 	scheduleResult, err := sched.Algorithm.Schedule(schedulingCycleCtx, sched.Extenders, fwk, state, pod)
 	if err != nil {
 		// Schedule() may have failed because the pod would not fit on any host, so we try to
@@ -490,6 +492,9 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, podInfo, err, v1.PodReasonUnschedulable, nominatingInfo)
 		return
 	}
+	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod), "scheduling result", scheduleResult)
+	klog.InfoS("Dumping Cache after schedule")
+	sched.SchedulerCache.Dump()
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
 	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
 	// This allows us to keep scheduling without waiting on binding to occur.
@@ -508,9 +513,12 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, assumedPodInfo, err, SchedulerError, clearNominatedNode)
 		return
 	}
+	klog.InfoS("Dumping Cache after cache AddPod")
+	sched.SchedulerCache.Dump()
 	sched.SchedulingQueue.AssignedPodAdded(pod)
-	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod))
 
+	klog.InfoS("Dumping Cache after queue AssignedPodAdded")
+	sched.SchedulerCache.Dump()
 	// Run the Reserve method of reserve plugins.
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost); !sts.IsSuccess() {
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
