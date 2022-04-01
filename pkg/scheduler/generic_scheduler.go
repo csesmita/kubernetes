@@ -436,6 +436,32 @@ func prioritizeNodes(
 		}
 	}
 
+	//Recreate nodeScoreList for NodeResourceFit
+	//TODO - defaultWeights should be removed for this plugin.
+	// The -ve scores won't suffice for beyond -99.
+	if nodeScoreList , ok := scoresMap["NodeResourcesFit"]; ok{
+		klog.InfoS("SMITA Old nodeScoreList with fmt is -", fmt.Sprintf("%+v",nodeScoreList))
+		/*
+		sum := int64(0)
+		for _, nodeScore := range nodeScoreList {
+			// TODO - This logic should go into a runScoreExtension perhaps?
+			sum += nodeScore.Score
+		}
+		*/
+		for i := 0 ; i < len(nodes); i++ {
+			newScore := -1.0 * nodeScoreList[i].Score
+			nodeScoreList[i].Score = newScore
+			/*
+			if nodeScoreList[i].Score > 0 {
+				newScore := sum / nodeScoreList[i].Score
+				nodeScoreList[i].Score = newScore
+			}
+			*/
+		}
+		klog.InfoS("SMITA New nodeScoreList with fmt is -", fmt.Sprintf("%+v",nodeScoreList))
+	}
+
+
 	// Summarize all scores.
 	result := make(framework.NodeScoreList, 0, len(nodes))
 

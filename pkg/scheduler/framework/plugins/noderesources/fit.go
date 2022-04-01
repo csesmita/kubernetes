@@ -335,5 +335,5 @@ func (f *Fit) Score(ctx context.Context, state *framework.CycleState, pod *v1.Po
 		return 0, framework.AsStatus(fmt.Errorf("getting node %q from Snapshot: %w", nodeName, err))
 	}
 
-	return f.score(pod, nodeInfo)
+	return int64(nodeInfo.EstimatedWaitTime), nil
 }

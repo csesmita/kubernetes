@@ -613,7 +613,7 @@ func (n *NodeInfo) AddPodInfo(podInfo *PodInfo) {
 
 	// Update EstimatedWaitTime of the node.
 	n.updateWaitTime(podInfo.Pod, true)
-	klog.InfoS("SMITA Got estimated wait time for the node - ",n.EstimatedWaitTime, "for node", n.Node())
+	klog.InfoS("SMITA Got estimated wait time for the node - ",n.EstimatedWaitTime, "for node", n.Node().Name)
 
 	n.Generation = nextGeneration()
 }
