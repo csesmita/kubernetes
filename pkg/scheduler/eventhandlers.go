@@ -177,10 +177,19 @@ func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
 	}
 }
 
-// This function is a No-Op since the requisite work has already
-// been done during schedule cycle.
 func (sched *Scheduler) addPodToCache(obj interface{}) {
-	return
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *v1.Pod", "obj", obj)
+		return
+	}
+	klog.V(3).InfoS("Add event for scheduled pod", "pod", klog.KObj(pod))
+
+	if err := sched.SchedulerCache.AddPod(pod); err != nil {
+		klog.ErrorS(err, "Scheduler cache AddPod failed", "pod", klog.KObj(pod))
+	}
+
+	sched.SchedulingQueue.AssignedPodAdded(pod)
 }
 
 func (sched *Scheduler) updatePodInCache(oldObj, newObj interface{}) {
