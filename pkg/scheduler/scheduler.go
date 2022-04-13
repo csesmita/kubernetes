@@ -490,12 +490,12 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 	}
 	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod), "scheduling result", scheduleResult)
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
-	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
-	// This allows us to keep scheduling without waiting on binding to occur.
+	//TODO - Replacing assumedPod with pod breaks deletion notification for unscheduled pod.
+	//Unsure why this should be the case. Debug further. For now, use assumedPod.
 	assumedPodInfo := podInfo.DeepCopy()
 	assumedPod := assumedPodInfo.Pod
 	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
-	err = sched.add(pod, scheduleResult.SuggestedHost)
+	err = sched.add(assumedPod, scheduleResult.SuggestedHost)
 	if err != nil {
 		klog.ErrorS(err, "Scheduler cache AddPod failed","pod", klog.KObj(pod))
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
@@ -507,7 +507,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, assumedPodInfo, err, SchedulerError, clearNominatedNode)
 		return
 	}
-	sched.SchedulingQueue.AssignedPodAdded(pod)
+	sched.SchedulingQueue.AssignedPodAdded(assumedPod)
 	// Run the Reserve method of reserve plugins.
 	if sts := fwk.RunReservePluginsReserve(schedulingCycleCtx, state, assumedPod, scheduleResult.SuggestedHost); !sts.IsSuccess() {
 		metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
