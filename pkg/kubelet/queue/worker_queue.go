@@ -28,7 +28,6 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
@@ -50,14 +49,9 @@ type WorkerQueue interface {
 	Close()
 }
 
-// LessFunc is the function to sort pod info
-type LessFunc func(podInfo1, podInfo2 *v1.Pod) bool
-
 // NewWorkerQueue initializes a priority queue as a new scheduling queue.
-func NewWorkerQueue(
-	lessFn LessFunc,
-	informerFactory informers.SharedInformerFactory) WorkerQueue {
-	return NewPriorityQueue(lessFn, informerFactory)
+func NewWorkerQueue() WorkerQueue {
+	return NewPriorityQueue()
 }
 
 // PriorityQueue implements a worker queue.
@@ -83,14 +77,12 @@ type PriorityQueue struct {
 var _ WorkerQueue = &PriorityQueue{}
 
 // NewPriorityQueue creates a PriorityQueue object.
-func NewPriorityQueue(
-	lessFn LessFunc,
-	informerFactory informers.SharedInformerFactory,
-) *PriorityQueue {
+func NewPriorityQueue() *PriorityQueue {
 	comp := func(pod1, pod2 interface{}) bool {
-		pInfo1 := pod1.(*v1.Pod)
-		pInfo2 := pod2.(*v1.Pod)
-		return lessFn(pInfo1, pInfo2)
+		p1 := pod1.(*v1.Pod)
+		p2 := pod2.(*v1.Pod)
+		//return p1.PodStatus.startTime.Before(p2.PodStatus)
+		return p1.CreationTimestamp.Before(&p2.CreationTimestamp)
 	}
 
 	pq := &PriorityQueue{
@@ -114,7 +106,7 @@ func (p *PriorityQueue) Add(pod *v1.Pod) error {
 	return nil
 }
 
-// Pop removes the head of the active queue and returns it. It blocks if the
+// Pop removes the head of the worker queue and returns it. It blocks if the
 // workerQ is empty and waits until a new item is added to the queue.
 func (p *PriorityQueue) Pop() (*v1.Pod, error) {
 	p.lock.Lock()
@@ -145,17 +137,15 @@ func (p *PriorityQueue) Update(oldPod, newPod *v1.Pod) error {
 	defer p.lock.Unlock()
 
 	if oldPod != nil {
-		oldPodInfo := oldPod
-		// If the pod is already in the active queue, just update it there.
-		if oldPodInfo, exists, _ := p.workerQ.Get(oldPodInfo); exists {
-			pInfo := updatePod(oldPodInfo, newPod)
-			return p.workerQ.Update(pInfo)
+		// If the pod is already in the worker queue, just update it there.
+		if oldPod, exists, _ := p.workerQ.Get(oldPod); exists {
+			p.workerQ.Delete(oldPod)
+			return p.workerQ.Add(newPod)
 		}
 	}
 
 	// If pod is not in any of the queues, we put it in the worker queue.
-	pInfo := newPod
-	if err := p.workerQ.Add(pInfo); err != nil {
+	if err := p.workerQ.Add(newPod); err != nil {
 		return err
 	}
 	p.cond.Broadcast()
@@ -180,27 +170,18 @@ func (p *PriorityQueue) Close() {
 	p.cond.Broadcast()
 }
 
-func updatePod(oldPodInfo interface{}, newPod *v1.Pod) *v1.Pod {
-	pInfo := oldPodInfo.(*v1.Pod)
-	klog.InfoS("SMITA - Hit updatePod() which has to be be implemented")
-	//TODO - An update function here that will actually do the replacement.
-	//pInfo.Update(newPod)
-	return pInfo
+func podKeyFunc(obj interface{}) (string, error) {
+	return cache.MetaNamespaceKeyFunc(obj.(*v1.Pod))
 }
 
-// MakeNextPodFunc returns a function to retrieve the next pod from the worker queue.
 func MakeNextPodFunc(queue WorkerQueue) func() *v1.Pod {
-	return func() *v1.Pod{
-		podInfo, err := queue.Pop()
+	return func() *v1.Pod {
+		pod, err := queue.Pop()
 		if err == nil {
-			klog.V(4).InfoS("About to try and schedule pod", "pod", klog.KObj(podInfo))
-			return podInfo
+			// TODO(smita) check for resource fit here
+			klog.InfoS("Scheduling pod from worker queue", "pod", klog.KObj(pod))
 		}
 		klog.ErrorS(err, "Error while retrieving next pod from scheduling queue")
 		return nil
 	}
-}
-
-func podKeyFunc(obj interface{}) (string, error) {
-	return cache.MetaNamespaceKeyFunc(obj.(*v1.Pod))
 }

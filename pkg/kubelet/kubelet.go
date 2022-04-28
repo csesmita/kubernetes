@@ -104,10 +104,11 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/sysctl"
 	"k8s.io/kubernetes/pkg/kubelet/token"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
+	wq "k8s.io/kubernetes/pkg/kubelet/queue"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 	"k8s.io/kubernetes/pkg/kubelet/util/manager"
 	"k8s.io/kubernetes/pkg/kubelet/util/queue"
-	"k8s.io/kubernetes/pkg/kubelet/util/sliceutils"
+	//"k8s.io/kubernetes/pkg/kubelet/util/sliceutils"
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager"
 	"k8s.io/kubernetes/pkg/security/apparmor"
 	sysctlallowlist "k8s.io/kubernetes/pkg/security/podsecuritypolicy/sysctl"
@@ -512,6 +513,8 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	}
 	httpClient := &http.Client{}
 
+	workerQ := wq.NewWorkerQueue()
+
 	klet := &Kubelet{
 		hostname:                                hostname,
 		hostnameOverridden:                      hostnameOverridden,
@@ -565,6 +568,8 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		keepTerminatedPodVolumes:                keepTerminatedPodVolumes,
 		nodeStatusMaxImages:                     nodeStatusMaxImages,
 		lastContainerStartedTime:                newTimeCache(),
+		workerqueue:                             workerQ,
+		NextPod:                                 wq.MakeNextPodFunc(workerQ),
 	}
 
 	if klet.cloud != nil {
@@ -1223,6 +1228,12 @@ type Kubelet struct {
 
 	// Handles node shutdown events for the Node.
 	shutdownManager nodeshutdown.Manager
+
+	//Worker Queue holds all incoming pods.
+	workerqueue wq.WorkerQueue
+
+	// NextPod() is a function that blocks till the next pod is available.
+	NextPod func() *v1.Pod
 }
 
 // ListPodStats is delegated to StatsProvider, which implements stats.Provider interface
@@ -1499,6 +1510,10 @@ func (kl *Kubelet) Run(updates <-chan kubetypes.PodUpdate) {
 	if kl.runtimeClassManager != nil {
 		kl.runtimeClassManager.Start(wait.NeverStop)
 	}
+
+	// Start the pod workerqueue manager
+	//TODO(smita) what happens if the wait period is set to 0 (instead of 5) like in scheduler?
+	go wait.Until(kl.runNextPodsFromWorkerQueue, 5, wait.NeverStop)
 
 	// Start the pod lifecycle event generator.
 	kl.pleg.Start()
@@ -1924,6 +1939,12 @@ func (kl *Kubelet) deletePod(pod *v1.Pod) error {
 	return nil
 }
 
+func (kl *Kubelet) addPodToWorkerQueue(pod *v1.Pod) {
+	if err := kl.workerqueue.Add(pod); err != nil {
+		klog.InfoS("unable to queue %T : %v", pod, err)
+	}
+}
+
 // rejectPod records an event about the pod with the given reason and message,
 // and updates the pod to the failed phase in the status manage.
 func (kl *Kubelet) rejectPod(pod *v1.Pod, reason, message string) {
@@ -2201,12 +2222,32 @@ func (kl *Kubelet) handleMirrorPod(mirrorPod *v1.Pod, start time.Time) {
 }
 
 // HandlePodAdditions is the callback in SyncHandler for pods being added from
-// a config source.
+// a config source. It adds all pods to the worker queue, to be picked up by
+// runNextPodsFromWorkerQueue in the order of priority.
 func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
+	// Always add in all incoming pods to the worker queue.
+	// TODO(smita) - This should be ok for both kube-system static pods and other
+	// workload pods. Is that so?
+	for _, p := range pods {
+		kl.addPodToWorkerQueue(p)
+	}
+}
+
+func (kl *Kubelet) runNextPodsFromWorkerQueue() {
 	start := kl.clock.Now()
-	sort.Sort(sliceutils.PodsByCreationTime(pods))
-	for _, pod := range pods {
+	// TODO - The comparison will now be done by the worker queue which is a heap
+	// that returns pods with the smallest creation timestamp.
+	// Similar to sliceutils.
+	// sort.Sort(sliceutils.PodsByCreationTime(pods))
+	for {
+		// This is a go routine so can block, if required.
+		pod := kl.NextPod()
+		// pod could be nil when workerqueue is closed.
+		if pod == nil {
+			return
+		}
 		existingPods := kl.podManager.GetPods()
+		klog.InfoS("Count of existing pods with podManager before adding a new one is", len(existingPods))
 		// Always add the pod to the pod manager. Kubelet relies on the pod
 		// manager as the source of truth for the desired state. If a pod does
 		// not exist in the pod manager, it means that it has been deleted in
@@ -2229,10 +2270,17 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 			// pods that are alive.
 			activePods := kl.filterOutInactivePods(existingPods)
 
-			// Check if we can admit the pod; if not, reject it.
+			// Check if we can admit the pod; if not, queue it for later processing.
 			if ok, reason, message := kl.canAdmitPod(activePods, pod); !ok {
-				kl.rejectPod(pod, reason, message)
-				continue
+				// Try later.
+				// TODO(smita) - Ensure there are no permanent failures.
+				klog.V(3).InfoS("Adding pod into worker queue since admission failed due to", reason,"and message", message, "pod", klog.KObj(pod))
+				// TODO(smita) - Delete from podManager?
+				kl.podManager.DeletePod(pod)
+				kl.addPodToWorkerQueue(pod)
+				// kl.rejectPod(pod, reason, message)
+				// Finish here since one failure may mean further failures?
+				break
 			}
 		}
 		mirrorPod, _ := kl.podManager.GetMirrorPodByPod(pod)
