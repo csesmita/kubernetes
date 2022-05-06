@@ -916,12 +916,14 @@ func (f *frameworkImpl) RunScorePlugins(ctx context.Context, state *framework.Cy
 		nodeScoreList := pluginToNodeScores[pl.Name()]
 
 		for i, nodeScore := range nodeScoreList {
+			/*
 			// return error if score plugin returns invalid score.
 			if nodeScore.Score > framework.MaxNodeScore || nodeScore.Score < framework.MinNodeScore {
 				err := fmt.Errorf("plugin %q returns an invalid score %v, it should in the range of [%v, %v] after normalizing", pl.Name(), nodeScore.Score, framework.MinNodeScore, framework.MaxNodeScore)
 				errCh.SendErrorWithCancel(err, cancel)
 				return
 			}
+			*/
 			nodeScoreList[i].Score = nodeScore.Score * int64(weight)
 		}
 	})

@@ -180,6 +180,7 @@ func MakeNextPodFunc(queue WorkerQueue) func() *v1.Pod {
 		if err == nil {
 			// TODO(smita) check for resource fit here
 			klog.InfoS("Scheduling pod from worker queue", "pod", klog.KObj(pod))
+			return pod
 		}
 		klog.ErrorS(err, "Error while retrieving next pod from scheduling queue")
 		return nil
