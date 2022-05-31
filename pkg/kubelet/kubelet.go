@@ -1942,7 +1942,7 @@ func (kl *Kubelet) addPodToWorkerQueue(pod *v1.Pod) {
 	if err := kl.workerqueue.Add(pod); err != nil {
 		klog.InfoS("unable to queue %T : %v", pod, err)
 	}
-	klog.InfoS("SMITA adding pod to worker queue", "pod", klog.KObj(pod))
+	klog.InfoS("Added pod to worker queue", "pod", klog.KObj(pod))
 }
 
 // rejectPod records an event about the pod with the given reason and message,
@@ -2246,9 +2246,9 @@ func (kl *Kubelet) runNextPodsFromWorkerQueue() {
 		if pod == nil {
 			return
 		}
-		klog.InfoS("SMITA runNextPodsFromWorkerQueue found pod", "pod", klog.KObj(pod))
+		//klog.InfoS("SMITA runNextPodsFromWorkerQueue found pod", "pod", klog.KObj(pod))
 		existingPods := kl.podManager.GetPods()
-		klog.InfoS("SMITA Count of existing pods with podManager before adding a new one is", len(existingPods))
+		//klog.InfoS("SMITA Count of existing pods with podManager before adding a new one is", len(existingPods))
 		// Always add the pod to the pod manager. Kubelet relies on the pod
 		// manager as the source of truth for the desired state. If a pod does
 		// not exist in the pod manager, it means that it has been deleted in
@@ -2275,7 +2275,7 @@ func (kl *Kubelet) runNextPodsFromWorkerQueue() {
 			if ok, reason, message := kl.canAdmitPod(activePods, pod); !ok {
 				// Try later.
 				// TODO(smita) - Ensure there are no permanent failures.
-				klog.InfoS("Adding pod into worker queue since admission failed due to", reason,"and message", message, "pod", klog.KObj(pod))
+				klog.InfoS("Adding pod back into worker queue since admission failed due to", reason,"and message", message, "pod", klog.KObj(pod))
 				// TODO(smita) - Delete from podManager?
 				kl.podManager.DeletePod(pod)
 				kl.addPodToWorkerQueue(pod)
@@ -2284,6 +2284,7 @@ func (kl *Kubelet) runNextPodsFromWorkerQueue() {
 				break
 			}
 		}
+		klog.InfoS("Ejecting pod from worker queue", "pod", klog.KObj(pod))
 		mirrorPod, _ := kl.podManager.GetMirrorPodByPod(pod)
 		kl.dispatchWork(pod, kubetypes.SyncPodCreate, mirrorPod, start)
 		// TODO: move inside syncPod and make reentrant
