@@ -202,13 +202,13 @@ func MakeDefaultErrorFunc(client clientset.Interface, podLister corelisters.PodL
 	return func(podInfo *framework.QueuedPodInfo, err error) {
 		pod := podInfo.Pod
 		if err == ErrNoNodesAvailable {
-			klog.V(2).InfoS("Unable to schedule pod; no nodes are registered to the cluster; waiting", "pod", klog.KObj(pod))
+			klog.V(2).InfoS("Unable to schedule pod; no nodes are registered to the cluster; waiting", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 		} else if fitError, ok := err.(*framework.FitError); ok {
 			// Inject UnschedulablePlugins to PodInfo, which will be used later for moving Pods between queues efficiently.
 			podInfo.UnschedulablePlugins = fitError.Diagnosis.UnschedulablePlugins
-			klog.V(2).InfoS("Unable to schedule pod; no fit; waiting", "pod", klog.KObj(pod), "err", err)
+			klog.V(2).InfoS("Unable to schedule pod; no fit; waiting", "pod", klog.KObj(pod), "err", err, "time", time.Now().Format("0102 15:04:05.000000"))
 		} else if apierrors.IsNotFound(err) {
-			klog.V(2).InfoS("Unable to schedule pod, possibly due to node not found; waiting", "pod", klog.KObj(pod), "err", err)
+			klog.V(2).InfoS("Unable to schedule pod, possibly due to node not found; waiting", "pod", klog.KObj(pod), "err", err, "time", time.Now().Format("0102 15:04:05.000000"))
 			if errStatus, ok := err.(apierrors.APIStatus); ok && errStatus.Status().Details.Kind == "node" {
 				nodeName := errStatus.Status().Details.Name
 				// when node is not found, We do not remove the node right away. Trying again to get

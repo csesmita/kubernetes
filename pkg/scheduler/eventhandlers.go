@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -115,7 +116,7 @@ func (sched *Scheduler) deleteNodeFromCache(obj interface{}) {
 
 func (sched *Scheduler) addPodToSchedulingQueue(obj interface{}) {
 	pod := obj.(*v1.Pod)
-	klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(pod))
+	klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 	if err := sched.SchedulingQueue.Add(pod); err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to queue %T: %v", obj, err))
 	}
@@ -158,7 +159,7 @@ func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
 		utilruntime.HandleError(fmt.Errorf("unable to handle object in %T: %T", sched, obj))
 		return
 	}
-	klog.V(3).InfoS("Delete event for unscheduled pod", "pod", klog.KObj(pod))
+	klog.V(3).InfoS("Delete event for unscheduled pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 	if err := sched.SchedulingQueue.Delete(pod); err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to dequeue %T: %v", obj, err))
 	}

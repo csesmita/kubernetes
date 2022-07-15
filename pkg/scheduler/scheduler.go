@@ -438,7 +438,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		return
 	}
 
-	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod))
+	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 
 	// Synchronously attempt to find a fit for the pod.
 	start := time.Now()
@@ -488,7 +488,6 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		sched.recordSchedulingFailure(fwk, podInfo, err, v1.PodReasonUnschedulable, nominatingInfo)
 		return
 	}
-	klog.InfoS("SMITA Successfully added bound pod to scheduler cache and queue","pod", klog.KObj(pod), "scheduling result", scheduleResult)
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInSeconds(start))
 	//TODO - Replacing assumedPod with pod breaks deletion notification for unscheduled pod.
 	//Unsure why this should be the case. Debug further. For now, use assumedPod.

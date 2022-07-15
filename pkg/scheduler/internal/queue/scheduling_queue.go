@@ -925,7 +925,7 @@ func MakeNextPodFunc(queue SchedulingQueue) func() *framework.QueuedPodInfo {
 	return func() *framework.QueuedPodInfo {
 		podInfo, err := queue.Pop()
 		if err == nil {
-			klog.V(4).InfoS("About to try and schedule pod", "pod", klog.KObj(podInfo.Pod))
+			klog.V(4).InfoS("About to try and schedule pod", "pod", klog.KObj(podInfo.Pod), "time", time.Now().Format("0102 15:04:05.000000"))
 			return podInfo
 		}
 		klog.ErrorS(err, "Error while retrieving next pod from scheduling queue")
