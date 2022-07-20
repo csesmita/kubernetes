@@ -122,6 +122,21 @@ func (h *data) Peek() interface{} {
 	return nil
 }
 
+func (h *data) PeekMany(numItems int) []interface{} {
+	maxItems := numItems
+	queueLength := len(h.queue)
+	if queueLength < maxItems {
+		maxItems = queueLength
+	}
+	var heapItems = make([]interface{}, maxItems)
+	i := 0
+	for i < maxItems {
+		heapItems = append(heapItems, h.items[h.queue[i]].obj)
+		i++
+	}
+	return heapItems
+}
+
 // Heap is a producer/consumer queue that implements a heap data structure.
 // It can be used to implement priority queues and similar data structures.
 type Heap struct {
@@ -193,6 +208,11 @@ func (h *Heap) Delete(obj interface{}) error {
 // Peek returns the head of the heap without removing it.
 func (h *Heap) Peek() interface{} {
 	return h.data.Peek()
+}
+
+// PeekMany returns the items from head of the heap without removing it.
+func (h *Heap) PeekMany(maxItems int) []interface{} {
+	return h.data.PeekMany(maxItems)
 }
 
 // Pop returns the head of the heap and removes it.

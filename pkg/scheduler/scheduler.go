@@ -634,6 +634,11 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			}
 		}
 	}()
+	if rand.Float64() < 0.0005 {
+		//Choosing 18 since that is the median number of tasks in Yahoo workload.
+		pNames := sched.SchedulingQueue.PeekMany(18)
+		klog.InfoS("Scheduler queue contains the following pods queued next", "pods", pNames, "time", time.Now().Format("0102 15:04:05.000000"))
+	}
 }
 
 func getAttemptsLabel(p *framework.QueuedPodInfo) string {

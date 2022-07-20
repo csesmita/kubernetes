@@ -92,6 +92,7 @@ type SchedulingQueue interface {
 	// Pop removes the head of the queue and returns it. It blocks if the
 	// queue is empty and waits until a new item is added to the queue.
 	Pop() (*framework.QueuedPodInfo, error)
+	PeekMany(n int) []string
 	Update(oldPod, newPod *v1.Pod) error
 	Delete(pod *v1.Pod) error
 	MoveAllToActiveOrBackoffQueue(event framework.ClusterEvent, preCheck PreEnqueueCheck)
@@ -450,6 +451,26 @@ func (p *PriorityQueue) flushUnschedulableQLeftover() {
 	if len(podsToMove) > 0 {
 		p.movePodsToActiveOrBackoffQueue(podsToMove, UnschedulableTimeout)
 	}
+}
+
+//PeekMany peeks into the heap and fetches the number of items
+//requested for. It then unwraps them and returns the names of the pods.
+func (p *PriorityQueue) PeekMany(maxItems int) []string {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	objs := p.activeQ.PeekMany(maxItems)
+	if objs == nil {
+		return nil
+	}
+	var podNames = make([]string, 0)
+	for _,obj := range objs {
+		if obj == nil {
+			continue
+		}
+		pName := (obj.(*framework.QueuedPodInfo)).Pod.Name
+		podNames = append(podNames, pName)
+	}
+	return podNames
 }
 
 // Pop removes the head of the active queue and returns it. It blocks if the
