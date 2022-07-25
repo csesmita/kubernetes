@@ -296,10 +296,11 @@ func GeneralPredicates(pod *v1.Pod, nodeInfo *schedulerframework.NodeInfo) ([]Pr
 	if !nodeports.Fits(pod, nodeInfo) {
 		reasons = append(reasons, &PredicateFailureError{nodeports.Name, nodeports.ErrReason})
 	}
-
+	/*
 	if len(reasons) > 0 {
-		/* This pod failed resource check. Queue it in the kubelet queue */
+		// This pod failed resource check. Queue it in the kubelet queue
 		klog.InfoS("SMITA  - Got unfitting resource reasons", reasons)
 	}
+	*/
 	return reasons, nil
 }

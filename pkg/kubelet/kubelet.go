@@ -1942,7 +1942,10 @@ func (kl *Kubelet) addPodToWorkerQueue(pod *v1.Pod) {
 	if err := kl.workerqueue.Add(pod); err != nil {
 		klog.InfoS("unable to queue %T : %v", pod, err)
 	}
-	klog.InfoS("Added pod to worker queue", "pod", klog.KObj(pod))
+}
+
+func (kl *Kubelet) getWorkerQueueLen() int {
+	return kl.workerqueue.Len()
 }
 
 // rejectPod records an event about the pod with the given reason and message,
@@ -2230,6 +2233,7 @@ func (kl *Kubelet) HandlePodAdditions(pods []*v1.Pod) {
 	// workload pods. Is that so?
 	for _, p := range pods {
 		kl.addPodToWorkerQueue(p)
+		klog.InfoS("Added pod to worker queue", "pod", klog.KObj(p), "queue length", kl.getWorkerQueueLen(), "time", kl.clock.Now().Format("0102 15:04:05.000000"))
 	}
 }
 
@@ -2284,7 +2288,7 @@ func (kl *Kubelet) runNextPodsFromWorkerQueue() {
 				break
 			}
 		}
-		klog.InfoS("Ejecting pod from worker queue", "pod", klog.KObj(pod))
+		klog.InfoS("Ejecting pod from worker queue", "pod", klog.KObj(pod), "queue length", kl.getWorkerQueueLen(), "time", kl.clock.Now().Format("0102 15:04:05.000000"))
 		mirrorPod, _ := kl.podManager.GetMirrorPodByPod(pod)
 		kl.dispatchWork(pod, kubetypes.SyncPodCreate, mirrorPod, start)
 		// TODO: move inside syncPod and make reentrant

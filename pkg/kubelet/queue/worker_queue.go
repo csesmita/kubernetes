@@ -44,6 +44,8 @@ type WorkerQueue interface {
 	Pop() (*v1.Pod, error)
 	Update(oldPod, newPod *v1.Pod) error
 	Delete(pod *v1.Pod) error
+
+	Len() int
 	// Close closes the WorkerQueue so that the goroutine which is
 	// waiting to pop items can exit gracefully.
 	Close()
@@ -104,6 +106,10 @@ func (p *PriorityQueue) Add(pod *v1.Pod) error {
 	}
 	p.cond.Broadcast()
 	return nil
+}
+
+func(p *PriorityQueue) Len() int {
+	return p.workerQ.Len()
 }
 
 // Pop removes the head of the worker queue and returns it. It blocks if the
