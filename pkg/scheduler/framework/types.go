@@ -128,6 +128,7 @@ type PodInfo struct {
 	PreferredAffinityTerms     []WeightedAffinityTerm
 	PreferredAntiAffinityTerms []WeightedAffinityTerm
 	ParseError                 error
+	JobID                      int
 }
 
 // DeepCopy returns a deep copy of the PodInfo object.
@@ -139,6 +140,19 @@ func (pi *PodInfo) DeepCopy() *PodInfo {
 		PreferredAffinityTerms:     pi.PreferredAffinityTerms,
 		PreferredAntiAffinityTerms: pi.PreferredAntiAffinityTerms,
 		ParseError:                 pi.ParseError,
+	        JobID:                      pi.JobID,
+	}
+}
+
+func getJobID(pod *v1.Pod) {
+	found := false
+	for _, container := range pod.Spec.Containers {
+		for _, env := range container.Env{
+			if env.Name == "JOBID"{
+				jobid, _ := strconv.ParseInt(env.Value, 0, 0)
+				return jobid
+			}
+		}
 	}
 }
 
@@ -188,6 +202,7 @@ func (pi *PodInfo) Update(pod *v1.Pod) {
 	pi.PreferredAffinityTerms = weightedAffinityTerms
 	pi.PreferredAntiAffinityTerms = weightedAntiAffinityTerms
 	pi.ParseError = utilerrors.NewAggregate(parseErrs)
+	pi.JobID = getJobID(pod)
 }
 
 // AffinityTerm is a processed version of v1.PodAffinityTerm.
@@ -776,6 +791,7 @@ func (n *NodeInfo) updateWaitTime(pod *v1.Pod, add bool) {
 		}
 	}
 }
+
 
 // updateUsedPorts updates the UsedPorts of NodeInfo.
 func (n *NodeInfo) updateUsedPorts(pod *v1.Pod, add bool) {
