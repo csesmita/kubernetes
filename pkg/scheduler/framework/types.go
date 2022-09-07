@@ -148,7 +148,7 @@ func getJobID(pod *v1.Pod) {
 	found := false
 	for _, container := range pod.Spec.Containers {
 		for _, env := range container.Env{
-			if env.Name == "JOBID"{
+			if env.Name == "JOBPRIO"{
 				jobid, _ := strconv.ParseInt(env.Value, 0, 0)
 				return jobid
 			}
