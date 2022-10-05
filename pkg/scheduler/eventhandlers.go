@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -29,6 +30,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	types "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
@@ -114,11 +116,22 @@ func (sched *Scheduler) deleteNodeFromCache(obj interface{}) {
 	}
 }
 
+const MULTIPLICATIVE_FACTOR_FOR_POD_CREATION = 2
 func (sched *Scheduler) addPodToSchedulingQueue(obj interface{}) {
 	pod := obj.(*v1.Pod)
 	klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 	if err := sched.SchedulingQueue.Add(pod); err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to queue %T: %v", obj, err))
+	}
+	for i := 1; i <= MULTIPLICATIVE_FACTOR_FOR_POD_CREATION; i++ {
+		newPod := pod.DeepCopy()
+		newPod.ObjectMeta.Name = "fake" + strconv.Itoa(i) + newPod.ObjectMeta.Name
+		newPod.ObjectMeta.UID = types.UID(newPod.ObjectMeta.Name)
+		klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(newPod), "time", time.Now().Format("0102 15:04:05.000000"))
+		if err := sched.SchedulingQueue.Add(newPod); err != nil {
+			klog.V(3).InfoS("unable to queue ", newPod, "error is", err)
+			utilruntime.HandleError(fmt.Errorf("unable to queue %T: %v", newPod, err))
+		}
 	}
 }
 
