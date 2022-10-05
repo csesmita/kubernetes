@@ -472,10 +472,20 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 					nominatingInfo = result.NominatingInfo
 				}
 			}
+			// Never mind the fit failure. Put the pod back into the active queue and return.
+			//assumedPodInfo := podInfo.DeepCopy()
+			//assumedPod := assumedPodInfo.Pod
+			if err := sched.SchedulingQueue.Add(pod); err != nil {
+				klog.V(3).InfoS("Unable to requeue pod that failed with fitError", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
+			}
+			klog.V(3).InfoS("Requeue event for unscheduled pod that failed with fitError", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
+			return
+			/*
 			// Pod did not fit anywhere, so it is counted as a failure. If preemption
 			// succeeds, the pod should get counted as a success the next time we try to
 			// schedule it. (hopefully)
 			metrics.PodUnschedulable(fwk.ProfileName(), metrics.SinceInSeconds(start))
+			*/
 		} else if err == ErrNoNodesAvailable {
 			nominatingInfo = clearNominatedNode
 			// No nodes available is counted as unschedulable rather than an error.
