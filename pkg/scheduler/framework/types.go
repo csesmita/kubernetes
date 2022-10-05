@@ -128,7 +128,7 @@ type PodInfo struct {
 	PreferredAffinityTerms     []WeightedAffinityTerm
 	PreferredAntiAffinityTerms []WeightedAffinityTerm
 	ParseError                 error
-	JobID                      int
+	JobID                      int64
 }
 
 // DeepCopy returns a deep copy of the PodInfo object.
@@ -144,8 +144,7 @@ func (pi *PodInfo) DeepCopy() *PodInfo {
 	}
 }
 
-func getJobID(pod *v1.Pod) {
-	found := false
+func getJobID(pod *v1.Pod) int64 {
 	for _, container := range pod.Spec.Containers {
 		for _, env := range container.Env{
 			if env.Name == "JOBPRIO"{
@@ -154,6 +153,7 @@ func getJobID(pod *v1.Pod) {
 			}
 		}
 	}
+	return 0
 }
 
 // Update creates a full new PodInfo by default. And only updates the pod when the PodInfo
