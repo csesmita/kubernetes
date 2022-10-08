@@ -40,7 +40,7 @@ func DefaultControllerRateLimiter() RateLimiter {
 	return NewMaxOfRateLimiter(
 		NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		&BucketRateLimiter{Limiter: rate.NewLimiter(rate.Inf, 100)},
 	)
 }
 

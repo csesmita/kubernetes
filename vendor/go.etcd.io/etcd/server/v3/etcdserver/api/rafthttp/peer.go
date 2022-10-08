@@ -213,7 +213,7 @@ func startPeer(t *Transport, urls types.URLs, peerID types.ID, fs *stats.Followe
 		status: status,
 		recvc:  p.recvc,
 		propc:  p.propc,
-		rl:     rate.NewLimiter(t.DialRetryFrequency, 1),
+		rl:     rate.NewLimiter(rate.Inf, 1),
 	}
 	p.msgAppReader = &streamReader{
 		lg:     t.Logger,
@@ -224,7 +224,7 @@ func startPeer(t *Transport, urls types.URLs, peerID types.ID, fs *stats.Followe
 		status: status,
 		recvc:  p.recvc,
 		propc:  p.propc,
-		rl:     rate.NewLimiter(t.DialRetryFrequency, 1),
+		rl:     rate.NewLimiter(rate.Inf, 1),
 	}
 
 	p.msgAppV2Reader.start()

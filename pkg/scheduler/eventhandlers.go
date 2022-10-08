@@ -116,7 +116,7 @@ func (sched *Scheduler) deleteNodeFromCache(obj interface{}) {
 	}
 }
 
-const MULTIPLICATIVE_FACTOR_FOR_POD_CREATION = 2
+const MULTIPLICATIVE_FACTOR_FOR_POD_CREATION = 100
 func (sched *Scheduler) addPodToSchedulingQueue(obj interface{}) {
 	pod := obj.(*v1.Pod)
 	klog.V(3).InfoS("Add event for unscheduled pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))

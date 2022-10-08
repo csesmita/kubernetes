@@ -61,14 +61,14 @@ type tokenBucketRateLimiter struct {
 // The bucket is initially filled with 'burst' tokens, and refills at a rate of 'qps'.
 // The maximum number of tokens in the bucket is capped at 'burst'.
 func NewTokenBucketRateLimiter(qps float32, burst int) RateLimiter {
-	limiter := rate.NewLimiter(rate.Limit(qps), burst)
+	limiter := rate.NewLimiter(rate.Inf, burst)
 	return newTokenBucketRateLimiterWithClock(limiter, clock.RealClock{}, qps)
 }
 
 // NewTokenBucketPassiveRateLimiter is similar to NewTokenBucketRateLimiter except that it returns
 // a PassiveRateLimiter which does not have Accept() and Wait() methods.
 func NewTokenBucketPassiveRateLimiter(qps float32, burst int) PassiveRateLimiter {
-	limiter := rate.NewLimiter(rate.Limit(qps), burst)
+	limiter := rate.NewLimiter(rate.Inf, burst)
 	return newTokenBucketRateLimiterWithPassiveClock(limiter, clock.RealClock{}, qps)
 }
 
@@ -83,7 +83,7 @@ var _ Clock = (*clock.RealClock)(nil)
 // NewTokenBucketRateLimiterWithClock is identical to NewTokenBucketRateLimiter
 // but allows an injectable clock, for testing.
 func NewTokenBucketRateLimiterWithClock(qps float32, burst int, c Clock) RateLimiter {
-	limiter := rate.NewLimiter(rate.Limit(qps), burst)
+	limiter := rate.NewLimiter(rate.Inf, burst)
 	return newTokenBucketRateLimiterWithClock(limiter, c, qps)
 }
 
@@ -91,7 +91,7 @@ func NewTokenBucketRateLimiterWithClock(qps float32, burst int, c Clock) RateLim
 // except that it returns a PassiveRateLimiter which does not have Accept() and Wait() methods
 // and uses a PassiveClock.
 func NewTokenBucketPassiveRateLimiterWithClock(qps float32, burst int, c clock.PassiveClock) PassiveRateLimiter {
-	limiter := rate.NewLimiter(rate.Limit(qps), burst)
+	limiter := rate.NewLimiter(rate.Inf, burst)
 	return newTokenBucketRateLimiterWithPassiveClock(limiter, c, qps)
 }
 

@@ -438,7 +438,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 		return
 	}
 
-	klog.V(3).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
+	klog.V(5).InfoS("Attempting to schedule pod", "pod", klog.KObj(pod), "time", time.Now().Format("0102 15:04:05.000000"))
 
 	// Synchronously attempt to find a fit for the pod.
 	start := time.Now()
@@ -616,7 +616,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			sched.recordSchedulingFailure(fwk, assumedPodInfo, fmt.Errorf("binding rejected: %w", err), SchedulerError, clearNominatedNode)
 		} else {
 			// Calculating nodeResourceString can be heavy. Avoid it if klog verbosity is below 2.
-			if klog.V(2).Enabled() {
+			if klog.V(5).Enabled() {
 				klog.InfoS("Successfully bound pod to node", "pod", klog.KObj(pod), "node", scheduleResult.SuggestedHost, "evaluatedNodes", scheduleResult.EvaluatedNodes, "feasibleNodes", scheduleResult.FeasibleNodes)
 			}
 			metrics.PodScheduled(fwk.ProfileName(), metrics.SinceInSeconds(start))

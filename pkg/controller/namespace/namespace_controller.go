@@ -109,7 +109,7 @@ func nsControllerRateLimiter() workqueue.RateLimiter {
 		// this ensures that we retry namespace deletion at least every minute, never longer.
 		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 60*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Inf, 100)},
 	)
 }
 

@@ -96,7 +96,7 @@ func NewController(endpointsInformer coreinformers.EndpointsInformer,
 			workqueue.NewItemExponentialFailureRateLimiter(defaultSyncBackOff, maxSyncBackOff),
 			// 10 qps, 100 bucket size. This is only for retry speed and its
 			// only the overall factor (not per item).
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Inf, 100)},
 		), "endpoint_slice_mirroring"),
 		workerLoopPeriod: time.Second,
 	}

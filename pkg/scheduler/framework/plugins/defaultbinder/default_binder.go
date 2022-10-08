@@ -52,10 +52,9 @@ func (b DefaultBinder) Name() string {
 // Bind binds pods to nodes using the k8s client.
 func (b DefaultBinder) Bind(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeName string) *framework.Status {
 	klog.V(3).InfoS("Attempting to bind pod to node", "pod", klog.KObj(p), "node", nodeName, "time", time.Now().Format("0102 15:04:05.000000"))
-	klog.V(3).InfoS("Pod object is", p)
 	// This object was internally created. No more action needs to be taken.
-	if strings.HasPrefix(p.ObjectMeta.GenerateName, "fake") {
-		klog.V(3).InfoS("Fake pod so no action needs to be taken on binding", "pod", klog.KObj(p))
+	if strings.HasPrefix(p.ObjectMeta.Name, "fake") {
+		klog.V(5).InfoS("Fake pod so no action needs to be taken on binding", "pod", klog.KObj(p))
 		return nil
 	}
 	binding := &v1.Binding{
