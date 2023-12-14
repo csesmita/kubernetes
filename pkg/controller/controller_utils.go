@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -449,6 +450,7 @@ type PodControlInterface interface {
 	CreatePods(ctx context.Context, namespace string, template *v1.PodTemplateSpec, object runtime.Object, controllerRef *metav1.OwnerReference) error
 	// CreatePodsWithGenerateName creates new pods according to the spec, sets object as the pod's controller and sets pod's generateName.
 	CreatePodsWithGenerateName(ctx context.Context, namespace string, template *v1.PodTemplateSpec, object runtime.Object, controllerRef *metav1.OwnerReference, generateName string) error
+	CreatePodsWithGenerateNameAndScheduler(ctx context.Context, namespace string, template *v1.PodTemplateSpec, object runtime.Object, controllerRef *metav1.OwnerReference, generateName string, schedName string) error
 	// DeletePod deletes the pod identified by podID.
 	DeletePod(ctx context.Context, namespace string, podID string, object runtime.Object) error
 	// PatchPod patches the pod.
@@ -530,6 +532,29 @@ func (r RealPodControl) CreatePodsWithGenerateName(ctx context.Context, namespac
 	}
 	return r.createPods(ctx, namespace, pod, controllerObject)
 }
+
+func (r RealPodControl) CreatePodsWithGenerateNameAndScheduler(ctx context.Context, namespace string, template *v1.PodTemplateSpec, controllerObject runtime.Object, controllerRef *metav1.OwnerReference, generateName string, schedulerName string) error {
+	if err := validateControllerRef(controllerRef); err != nil {
+		return err
+	}
+	pod, err := GetPodFromTemplate(template, controllerObject, controllerRef)
+	if err != nil {
+		return err
+	}
+	if len(generateName) > 0 {
+		pod.ObjectMeta.GenerateName = generateName
+	}
+	if len(schedulerName) > 0 {
+		pod.Spec.SchedulerName = strings.Split(schedulerName, "-")[0]
+	}
+	pod.ObjectMeta.Labels["schedulerName"] = pod.Spec.SchedulerName
+
+	klog.V(4).InfoS("New Pod's spec scheduler name is", pod.Spec.SchedulerName)
+	klog.V(4).InfoS("New Pod's spec node name is", pod.Spec.NodeName)
+	klog.V(4).InfoS("New Pod's labels are", pod.ObjectMeta.Labels)
+	return r.createPods(ctx, namespace, pod, controllerObject)
+}
+
 
 func (r RealPodControl) PatchPod(ctx context.Context, namespace, name string, data []byte) error {
 	_, err := r.KubeClient.CoreV1().Pods(namespace).Patch(ctx, name, types.StrategicMergePatchType, data, metav1.PatchOptions{})
@@ -644,6 +669,10 @@ func (f *FakePodControl) CreatePodsWithGenerateName(ctx context.Context, namespa
 		return f.Err
 	}
 	return nil
+}
+
+func (f *FakePodControl) CreatePodsWithGenerateNameAndScheduler(ctx context.Context, namespace string, spec *v1.PodTemplateSpec, object runtime.Object, controllerRef *metav1.OwnerReference, generateNamePrefix string, schedName string) error {
+	return f.CreatePodsWithGenerateName(ctx, namespace, spec, object, controllerRef,generateNamePrefix)
 }
 
 func (f *FakePodControl) DeletePod(ctx context.Context, namespace string, podID string, object runtime.Object) error {
