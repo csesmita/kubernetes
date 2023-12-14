@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
 	"sort"
 	"sync"
@@ -117,6 +118,9 @@ type Controller struct {
 	recorder record.EventRecorder
 
 	podUpdateBatchPeriod time.Duration
+
+	// A list of active schedulers
+	schedulersList []string
 }
 
 // NewController creates a new Job controller that keeps the relevant pods
@@ -174,6 +178,8 @@ func NewController(podInformer coreinformers.PodInformer, jobInformer batchinfor
 
 	metrics.Register()
 
+	// Allocate space for 20 scheduler names
+        jm.schedulersList = make([]string, 20)
 	return jm
 }
 
@@ -183,6 +189,7 @@ func (jm *Controller) Run(ctx context.Context, workers int) {
 	defer jm.queue.ShutDown()
 	defer jm.orphanQueue.ShutDown()
 
+	rand.Seed(time.Now().Unix())
 	klog.Infof("Starting job controller")
 	defer klog.Infof("Shutting down job controller")
 
@@ -241,6 +248,7 @@ func (jm *Controller) resolveControllerRef(namespace string, controllerRef *meta
 // When a pod is created, enqueue the controller that manages it and update it's expectations.
 func (jm *Controller) addPod(obj interface{}) {
 	pod := obj.(*v1.Pod)
+	klog.V(4).InfoS("Pod added", "pod", klog.KObj(pod))
 	if pod.DeletionTimestamp != nil {
 		// on a restart of the controller, it's possible a new pod shows up in a state that
 		// is already pending deletion. Prevent the pod from being a creation observation.
@@ -248,10 +256,24 @@ func (jm *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	klog.V(4).InfoS("Pod's labels are %+v\n", pod.ObjectMeta.Labels)
 	// If it has a ControllerRef, that's all that matters.
 	if controllerRef := metav1.GetControllerOf(pod); controllerRef != nil {
+		klog.V(4).InfoS("ControllerRef is set to", controllerRef)
 		job := jm.resolveControllerRef(pod.Namespace, controllerRef)
 		if job == nil {
+			klog.V(4).InfoS("No job found for the pod", "pod", klog.KObj(pod))
+			component, ok := pod.ObjectMeta.Labels["component"]
+			if ok {
+				klog.V(4).Infof("Pod's component is %+v\n", component)
+				if component == "scheduler" {
+			            klog.V(3).InfoS("Scheduler pod added", pod.ObjectMeta.Name)
+			            //klog.V(3).InfoS("Scheduler pod is", pod)
+				    // add scheduler to list of schedulers known by job-controller
+				    jm.schedulersList = append(jm.schedulersList, pod.ObjectMeta.Name)
+				    klog.V(3).InfoS("List of schedulers currently present with the job-controller", jm.schedulersList)
+				}
+			}
 			return
 		}
 		jobKey, err := controller.KeyFunc(job)
@@ -372,6 +394,41 @@ func (jm *Controller) deletePod(obj interface{}, final bool) {
 	}
 	job := jm.resolveControllerRef(pod.Namespace, controllerRef)
 	if job == nil {
+		//klog.V(4).Infof("No resolved job for pod. Pod's labels are %+v\n", pod.ObjectMeta.Labels)
+		component, ok := pod.ObjectMeta.Labels["component"]
+		if ok {
+			//klog.V(4).Infof("Pod's component is %+v\n", component)
+			if component == "scheduler" {
+			    klog.V(3).InfoS("Scheduler pod deleted", pod.ObjectMeta.Name)
+			    index := -1
+			    for idx, schedName := range jm.schedulersList {
+				    if schedName == pod.ObjectMeta.Name {
+					    index = idx
+					    break
+				    }
+			    }
+			    if index > -1 {
+				    //Since order of scheduler names is unimportant
+				    // store the last element at this index
+				    jm.schedulersList[index] = jm.schedulersList[len(jm.schedulersList) - 1]
+				    jm.schedulersList = jm.schedulersList[:len(jm.schedulersList) - 1]
+				    /*
+				    // Take action on the deleted scheduler.
+				    // First, fetch all pods which were waiting on this scheduler
+				    schedulerName := pod.ObjectMeta.Name
+				    fieldSelector := fields.Set{"spec.schedulerName": schedulerName, "spec.nodeName": ""}.AsSelector()
+				    //opts := metav1.ListOptions{FieldSelector: fmt.Sprintf("spec.schedulerName=%v,spec.nodeName=%v", schedulerName, ""),}
+				    pods, err := jm.podStore.Pods("default").List(fieldSelector)
+				    if err != nil {
+					klog.V(4).InfoS("Error fetching unscheduled pods of the scheduler %+v ",schedulerName,"- %+v", err)
+				    } else {
+					klog.V(4).InfoS("Listing all unscheduled pods of scheduler %+v ", schedulerName, " - %+v\n", pods)
+				    }
+				    */
+			    }
+			    klog.V(3).InfoS("List of schedulers currently present with the job-controller", jm.schedulersList)
+			}
+		}
 		if hasJobTrackingFinalizer(pod) {
 			jm.enqueueOrphanPod(pod)
 		}
@@ -1377,7 +1434,11 @@ func (jm *Controller) manageJob(ctx context.Context, job *batch.Job, activePods 
 						generateName = podGenerateNameWithIndex(job.Name, completionIndex)
 					}
 					defer wait.Done()
-					err := jm.podControl.CreatePodsWithGenerateName(ctx, job.Namespace, template, job, metav1.NewControllerRef(job, controllerKind), generateName)
+					//todo - assign a scheduler to this pod only if it is not a scheduler itself
+					// job template currently is only used for non-scheduler pods. Should be ok.
+					schedName := jm.schedulersList[rand.Intn(len(jm.schedulersList))]
+					klog.V(2).InfoS("Randomly choosing sched", schedName)
+					err := jm.podControl.CreatePodsWithGenerateNameAndScheduler(ctx, job.Namespace, template, job, metav1.NewControllerRef(job, controllerKind), generateName, schedName)
 					if err != nil {
 						if apierrors.HasStatusCause(err, v1.NamespaceTerminatingCause) {
 							// If the namespace is being torn down, we can safely ignore
