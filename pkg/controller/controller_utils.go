@@ -453,6 +453,7 @@ type PodControlInterface interface {
 	CreatePodsWithGenerateNameAndScheduler(ctx context.Context, namespace string, template *v1.PodTemplateSpec, object runtime.Object, controllerRef *metav1.OwnerReference, generateName string, schedName string) error
 	// DeletePod deletes the pod identified by podID.
 	DeletePod(ctx context.Context, namespace string, podID string, object runtime.Object) error
+        DeleteActivePod(ctx context.Context, namespace string, podID string) error
 	// PatchPod patches the pod.
 	PatchPod(ctx context.Context, namespace, name string, data []byte) error
 }
@@ -545,7 +546,7 @@ func (r RealPodControl) CreatePodsWithGenerateNameAndScheduler(ctx context.Conte
 		pod.ObjectMeta.GenerateName = generateName
 	}
 	if len(schedulerName) > 0 {
-		pod.Spec.SchedulerName = strings.Split(schedulerName, "-")[0]
+		pod.Spec.SchedulerName = schedulerName
 	}
 	pod.ObjectMeta.Labels["schedulerName"] = pod.Spec.SchedulerName
 
@@ -615,16 +616,23 @@ func (r RealPodControl) DeletePod(ctx context.Context, namespace string, podID s
 		return fmt.Errorf("object does not have ObjectMeta, %v", err)
 	}
 	klog.V(2).InfoS("Deleting pod", "controller", accessor.GetName(), "pod", klog.KRef(namespace, podID))
+	err = r.DeleteActivePod(ctx, namespace, podID)
+	if err != nil {
+		r.Recorder.Eventf(object, v1.EventTypeWarning, FailedDeletePodReason, "Error deleting: %v", err)
+		return fmt.Errorf("unable to delete pods: %v", err)
+	}
+	r.Recorder.Eventf(object, v1.EventTypeNormal, SuccessfulDeletePodReason, "Deleted pod: %v", podID)
+	return nil
+}
+
+func (r RealPodControl) DeleteActivePod(ctx context.Context, namespace string, podID string) error {
 	if err := r.KubeClient.CoreV1().Pods(namespace).Delete(ctx, podID, metav1.DeleteOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(4).Infof("pod %v/%v has already been deleted.", namespace, podID)
 			return err
 		}
-		r.Recorder.Eventf(object, v1.EventTypeWarning, FailedDeletePodReason, "Error deleting: %v", err)
-		return fmt.Errorf("unable to delete pods: %v", err)
+		return err
 	}
-	r.Recorder.Eventf(object, v1.EventTypeNormal, SuccessfulDeletePodReason, "Deleted pod: %v", podID)
-
 	return nil
 }
 
@@ -685,6 +693,9 @@ func (f *FakePodControl) DeletePod(ctx context.Context, namespace string, podID 
 	return nil
 }
 
+func (f *FakePodControl) DeleteActivePod(ctx context.Context, namespace string, podID string) error {
+	return f.DeletePod(ctx, namespace, podID, nil)
+}
 func (f *FakePodControl) Clear() {
 	f.Lock()
 	defer f.Unlock()
