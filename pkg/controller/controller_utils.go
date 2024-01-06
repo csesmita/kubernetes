@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
