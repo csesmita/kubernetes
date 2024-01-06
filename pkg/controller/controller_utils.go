@@ -546,8 +546,8 @@ func (r RealPodControl) CreatePodsWithGenerateNameAndScheduler(ctx context.Conte
 	}
 	if len(schedulerName) > 0 {
 		pod.Spec.SchedulerName = schedulerName
+	        pod.ObjectMeta.Labels["schedulerName"] = pod.Spec.SchedulerName
 	}
-	pod.ObjectMeta.Labels["schedulerName"] = pod.Spec.SchedulerName
 
 	klog.V(4).InfoS("New Pod's spec scheduler name is", pod.Spec.SchedulerName)
 	klog.V(4).InfoS("New Pod's spec node name is", pod.Spec.NodeName)
